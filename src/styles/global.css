@@ -37,6 +37,7 @@
   --measure: 66ch;
   --wide: 72rem;
   --gutter: 1.25rem;
+  --header-h: 3.75rem;
   --radius: 10px;
   --r-sm: 6px;
   --r-lg: 14px;
@@ -46,6 +47,12 @@
 
   --ease: cubic-bezier(.2, .7, .2, 1);
   --dur: .25s;
+}
+
+@media (max-width: 52rem) {
+  :root {
+    --header-h: 5.6rem;
+  }
 }
 
 @media (max-width: 32rem) {
@@ -663,7 +670,7 @@ code, kbd {
   box-shadow: 0 1px 3px rgb(0 0 0 / .25);
   transition: transform .2s var(--ease);
 }
-.switch:checked { background: var(--success); }
+.switch:checked { background: var(--accent); }
 .switch:checked::before { transform: translateX(1.1rem); }
 
 /* Contrôle segmenté (radios) */

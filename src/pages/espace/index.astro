@@ -98,7 +98,17 @@ const localPresetCourses = getCourses().map((s) => {
           </div>
 
           <div class="form-group">
-            <label for="login-password" class="field-label">Mot de passe :</label>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <label for="login-password" class="field-label">Mot de passe :</label>
+              <button
+                type="button"
+                class="btn-pwd-toggle"
+                id="btn-toggle-pwd-vis"
+                aria-label="Afficher ou masquer le mot de passe"
+              >
+                Afficher
+              </button>
+            </div>
             <input
               type="password"
               id="login-password"
@@ -108,11 +118,11 @@ const localPresetCourses = getCourses().map((s) => {
             />
           </div>
 
-          <div id="login-error-box" class="login-error" style="display: none;">
+          <div id="login-error-box" class="login-error" style="display: none;" role="alert">
             <span id="login-error-text">Identifiants invalides.</span>
           </div>
 
-          <div class="card-actions">
+          <div class="card-actions auth-card-actions">
             <button type="submit" class="btn btn--primary" id="btn-submit-login">
               Se connecter
             </button>
@@ -124,7 +134,7 @@ const localPresetCourses = getCourses().map((s) => {
         </form>
 
         <!-- Configuration Supabase intégrée (évite les blocages d'accès) -->
-        <div id="box-supabase-inline" class="auth-supabase-inline" style="display: none; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color, #e5e5e5);">
+        <div id="box-supabase-inline" class="auth-supabase-inline" style="display: none; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--line);">
           <h3 style="font-size: 1rem; margin-bottom: 0.35rem;">Configuration directe de Supabase</h3>
           <p class="meta" style="font-size: 0.85rem; margin-bottom: 1rem;">
             Renseignez votre Project URL et clé publique ci-dessous pour connecter l'application à votre instance Supabase.
@@ -541,6 +551,7 @@ const localPresetCourses = getCourses().map((s) => {
   import { url } from '../../utils/url';
   import { setupPdfViewerModal, openPdfViewer } from '../../utils/pdfViewer';
   import { processFolderUpload } from '../../utils/courseImport';
+  import { toast } from '../../utils/toast';
 
   // Parser Markdown ultra-léger et sécurisé
   function renderMarkdown(md: string): string {
@@ -555,7 +566,7 @@ const localPresetCourses = getCourses().map((s) => {
       .replace(/^## (.*$)/gim, '<h2>$1</h2>')
       .replace(/^# (.*$)/gim, '<h1>$1</h1>')
       .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: var(--color-accent, #0066cc); text-decoration: underline;">$1</a>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">$1</a>')
       .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/gim, '<em>$1</em>')
       .replace(/`([^`]+)`/gim, '<code>$1</code>')
@@ -576,8 +587,16 @@ const localPresetCourses = getCourses().map((s) => {
     const formLogin = document.getElementById('form-login') as HTMLFormElement;
     const loginEmailInput = document.getElementById('login-email') as HTMLInputElement;
     const loginPwdInput = document.getElementById('login-password') as HTMLInputElement;
+    const btnTogglePwdVis = document.getElementById('btn-toggle-pwd-vis');
     const loginErrorBox = document.getElementById('login-error-box');
     const loginErrorText = document.getElementById('login-error-text');
+
+    btnTogglePwdVis?.addEventListener('click', () => {
+      if (!loginPwdInput) return;
+      const isPwd = loginPwdInput.type === 'password';
+      loginPwdInput.type = isPwd ? 'text' : 'password';
+      btnTogglePwdVis.textContent = isPwd ? 'Masquer' : 'Afficher';
+    });
 
     const espaceBanner = document.getElementById('espace-banner');
     const espaceBannerText = document.getElementById('espace-banner-text');
@@ -657,6 +676,7 @@ const localPresetCourses = getCourses().map((s) => {
     let activeScheduleDate = new Date();
 
     function notify(msg: string, isError = false) {
+      toast(msg, isError ? 'error' : 'info');
       if (!espaceBanner || !espaceBannerText) return;
       espaceBannerText.textContent = msg;
       espaceBanner.className = isError ? 'panel espace-banner banner-error' : 'panel espace-banner';
@@ -1243,8 +1263,7 @@ const localPresetCourses = getCourses().map((s) => {
             btn.style.marginLeft = '0.6rem';
             btn.style.padding = '0.15rem 0.5rem';
             btn.style.fontSize = '0.78rem';
-            const icon = itemExt === 'pdf' ? '📄' : (itemExt === 'docx' || itemExt === 'doc') ? '📝' : '💻';
-            btn.textContent = `${icon} Consulter (${itemExt.toUpperCase()})`;
+            btn.textContent = `Consulter (${itemExt.toUpperCase()})`;
             btn.addEventListener('click', (e) => {
               e.stopPropagation();
               openPdfViewer({
@@ -1601,7 +1620,7 @@ const localPresetCourses = getCourses().map((s) => {
       } catch (err: any) {
         if (remindersLoading) {
           remindersLoading.style.display = 'block';
-          remindersLoading.innerHTML = `<span style="color: var(--color-danger, #dc2626);">${formatSupabaseError(err)}</span>`;
+          remindersLoading.innerHTML = `<span style="color: var(--danger);">${formatSupabaseError(err)}</span>`;
         }
       } finally {
         if (remindersLoading && (cachedReminders.length > 0 || (remindersEmpty && remindersEmpty.style.display === 'block'))) {
@@ -1790,6 +1809,22 @@ const localPresetCourses = getCourses().map((s) => {
       // Ignorer si pas configuré
     }
 
+    // Fermeture au clic sur l'arrière-plan ou touche Échap pour toutes les modales
+    document.querySelectorAll<HTMLElement>('.modal-overlay').forEach((overlay) => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.style.display = 'none';
+      });
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll<HTMLElement>('.modal-overlay').forEach((overlay) => {
+          if (overlay.style.display && overlay.style.display !== 'none') {
+            overlay.style.display = 'none';
+          }
+        });
+      }
+    });
+
     // Initialisation au chargement
     setupPdfViewerModal();
     refreshSessionState();
@@ -1869,8 +1904,8 @@ const localPresetCourses = getCourses().map((s) => {
     font-size: 0.9rem;
   }
   .banner-error {
-    border-left-color: #ef4444;
-    color: #ef4444;
+    border-left-color: var(--danger);
+    color: var(--danger);
   }
   .banner-dot {
     width: 6px;
@@ -1884,6 +1919,30 @@ const localPresetCourses = getCourses().map((s) => {
     width: 100%;
     margin: 2rem auto;
     padding: clamp(1.25rem, 1rem + 1vw, 2.25rem);
+  }
+  .auth-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 0.25rem;
+  }
+  .btn-pwd-toggle {
+    background: none;
+    border: none;
+    padding: 0.1rem 0.25rem;
+    font-family: var(--font-ui);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+  .btn-pwd-toggle:hover {
+    color: var(--fg);
+    background: var(--soft);
   }
   .card-head {
     display: flex;
@@ -1945,12 +2004,12 @@ const localPresetCourses = getCourses().map((s) => {
   }
 
   .login-error {
-    background: color-mix(in srgb, #ef4444 15%, transparent);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
     padding: 0.65rem 0.85rem;
     border-radius: var(--radius);
     font-size: 0.85rem;
-    border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
   }
 
   .auth-security-notice {
@@ -2094,7 +2153,7 @@ const localPresetCourses = getCourses().map((s) => {
     display: inline-block;
   }
   .dot-status.dot-active {
-    background: #16a34a;
+    background: var(--success);
   }
   .schedule-days-grid {
     display: grid;
@@ -2148,7 +2207,7 @@ const localPresetCourses = getCourses().map((s) => {
     font-size: 0.85rem;
     padding: 0.2rem 0.4rem;
   }
-  .btn-del-event:hover { color: #ef4444; }
+  .btn-del-event:hover { color: var(--danger); }
   .event-title {
     font-size: 0.92rem;
   }
@@ -2406,6 +2465,13 @@ const localPresetCourses = getCourses().map((s) => {
       gap: 0.75rem;
     }
     .modal-footer .btn {
+      width: 100%;
+    }
+    .auth-card-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .auth-card-actions .btn {
       width: 100%;
     }
   }

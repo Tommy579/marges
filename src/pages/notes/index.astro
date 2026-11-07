@@ -444,7 +444,7 @@ const subjectsList = subjects.map((s) => ({
   .notes-workspace {
     font-family: var(--font-ui);
     display: flex;
-    height: calc(100dvh - 3.75rem);
+    height: calc(100dvh - var(--header-h, 3.75rem));
     background: var(--bg);
     color: var(--fg);
     position: relative;
@@ -789,7 +789,7 @@ const subjectsList = subjects.map((s) => ({
     flex-direction: column;
     min-width: 0;
     background: var(--bg);
-    height: calc(100dvh - 3.75rem);
+    height: calc(100dvh - var(--header-h, 3.75rem));
     overflow: hidden;
     font-family: var(--font-ui);
   }
@@ -1147,6 +1147,12 @@ const subjectsList = subjects.map((s) => ({
     opacity: 1;
   }
 
+  @media (hover: none) {
+    .btn-inline-add {
+      opacity: 1;
+    }
+  }
+
   .btn-inline-add:hover {
     background: var(--surface);
   }
@@ -1162,15 +1168,15 @@ const subjectsList = subjects.map((s) => ({
     display: flex;
     align-items: center;
     gap: 0.2rem;
-    padding: 0.25rem 0;
+    padding: 0.35rem 0;
     background: var(--bg);
     border-bottom: 1px solid var(--line);
     margin-bottom: 1.1rem;
     flex-wrap: wrap;
     position: sticky;
-    top: -2.25rem;
+    top: 0;
     z-index: 10;
-    opacity: 0.55;
+    opacity: 0.75;
     transition: opacity 0.15s ease;
     font-family: var(--font-ui);
   }

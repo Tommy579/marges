@@ -192,9 +192,9 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
 
         <form id="form-reminders" class="config-form">
           <div class="form-group">
-            <label class="form-checkbox main-toggle">
-              <input type="checkbox" id="reminders-enabled" checked />
+            <label class="switch-row main-toggle">
               <span>Activer la programmation automatique des alertes</span>
+              <input type="checkbox" class="switch" role="switch" id="reminders-enabled" checked />
             </label>
           </div>
 
@@ -376,6 +376,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
     normalizeAmbianceColor,
     type AmbianceColorId,
   } from '../../utils/supabase';
+  import { toast } from '../../utils/toast';
 
   async function initConfigPage() {
     // 0. GESTION DE LA COULEUR D'AMBIANCE (ASSOCIÉE AU COMPTE SUPABASE)
@@ -530,7 +531,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
               }
 
               if (timetableDesc) timetableDesc.textContent = syncMsg;
-              alert(syncMsg);
+              toast(syncMsg, 'success');
             }
             if (submitBtn) {
               submitBtn.disabled = false;
@@ -562,7 +563,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
               }
 
               if (timetableDesc) timetableDesc.textContent = syncMsg;
-              alert(syncMsg);
+              toast(syncMsg, 'success');
             }
           } catch (fetchErr: any) {
             console.warn('[Sync Config] Fetch distant échoué:', fetchErr);
@@ -573,9 +574,9 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
               }
             } catch {}
 
-            const msg = `URL enregistrée, mais impossible de récupérer le flux en direct : ${fetchErr.message || fetchErr}\n\nConseil : Pour les ENT ou agendas universitaires avec restrictions de sécurité (CORS ou mot de passe ENT), téléchargez le fichier .ics depuis votre ENT et déposez-le dans le champ "Importer un fichier iCalendar" ci-dessus.`;
-            if (timetableDesc) timetableDesc.textContent = `URL enregistrée. Téléchargement direct bloqué par l'ENT : utilisez le fichier .ics.`;
-            alert(msg);
+            const msg = `URL enregistrée. Téléchargement direct bloqué par l'ENT : importez plutôt le fichier .ics.`;
+            if (timetableDesc) timetableDesc.textContent = msg;
+            toast(msg, 'info');
           } finally {
             if (submitBtn) {
               submitBtn.disabled = false;
@@ -593,7 +594,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
           submitBtn.disabled = false;
           submitBtn.textContent = 'Mettre à jour le calendrier';
         }
-        alert('Erreur: ' + (err.message || err));
+        toast('Erreur : ' + (err.message || err), 'error');
       }
     });
 
@@ -617,7 +618,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
         }
 
         if (timetableDesc) timetableDesc.textContent = 'Aucun calendrier iCal importé.';
-        alert('Calendrier importé effacé avec succès.');
+        toast('Calendrier importé effacé avec succès.', 'info');
       }
     });
 
@@ -683,9 +684,9 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
 
       try {
         await saveUnifiedReminderConfig(newConfig);
-        alert('Préférences de rappels synchronisées et sauvegardées avec succès !');
+        toast('Préférences de rappels synchronisées et sauvegardées.', 'success');
       } catch (err: any) {
-        alert(err.message || 'Erreur lors de la sauvegarde.');
+        toast(err.message || 'Erreur lors de la sauvegarde.', 'error');
       } finally {
         if (submitBtn) submitBtn.disabled = false;
       }
@@ -728,7 +729,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
       if (supabaseUrlInput) supabaseUrlInput.value = creds.url;
       if (supabaseAnonInput) supabaseAnonInput.value = creds.anonKey;
       updateSupabaseUI();
-      alert('Clés officielles de Supabase restaurées avec succès !');
+      toast('Clés officielles de Supabase restaurées.', 'success');
     });
 
     supabaseForm?.addEventListener('submit', (e) => {
@@ -736,12 +737,12 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
       const urlVal = supabaseUrlInput.value.trim().replace(/\/+$/, '');
       const keyVal = supabaseAnonInput.value.trim();
       if (!urlVal || !keyVal) {
-        alert('Veuillez renseigner à la fois le Project URL et la clé publique.');
+        toast('Veuillez renseigner à la fois le Project URL et la clé publique.', 'error');
         return;
       }
       saveSupabaseCredentials(urlVal, keyVal);
       updateSupabaseUI();
-      alert('Identifiants Supabase enregistrés dans votre navigateur !');
+      toast('Identifiants Supabase enregistrés dans votre navigateur.', 'success');
     });
 
     btnTestSupabase?.addEventListener('click', async () => {
@@ -749,7 +750,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
       const urlVal = (supabaseUrlInput.value.trim() || creds.url).replace(/\/+$/, '');
       const keyVal = supabaseAnonInput.value.trim() || creds.anonKey;
       if (!urlVal || !keyVal) {
-        alert('Veuillez d’abord renseigner vos identifiants Supabase.');
+        toast('Veuillez d’abord renseigner vos identifiants Supabase.', 'error');
         return;
       }
       if (supabaseDesc) supabaseDesc.textContent = 'Test de connexion en cours...';
@@ -762,7 +763,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
         });
         if (res.ok) {
           if (supabaseDesc) supabaseDesc.textContent = 'Connexion à l’API Supabase validée avec succès.';
-          alert('Succès : La connexion à votre projet Supabase fonctionne parfaitement !');
+          toast('Connexion à votre projet Supabase validée.', 'success');
         } else if (res.status === 404 || res.status === 401) {
           // Si ping table pas encore créée, tester la racine auth ou schema
           const authRes = await fetch(`${urlVal}/auth/v1/health`, {
@@ -770,7 +771,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
           });
           if (authRes.ok) {
             if (supabaseDesc) supabaseDesc.textContent = 'API Supabase Auth joignable.';
-            alert('Connexion établie avec le service d’authentification Supabase !');
+            toast('Connexion établie avec le service d’authentification Supabase.', 'success');
           } else {
             throw new Error(`Statut HTTP : ${res.status}`);
           }
@@ -780,7 +781,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
       } catch (err: any) {
         const formatted = formatSupabaseError(err);
         if (supabaseDesc) supabaseDesc.textContent = `Erreur de connexion : ${formatted}`;
-        alert(`Échec du test de connexion : ${formatted}`);
+        toast(`Échec du test de connexion : ${formatted}`, 'error');
       }
     });
 
@@ -822,9 +823,9 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
       if (confirm('Attention : Voulez-vous vraiment supprimer DÉFINITIVEMENT tous vos cours ?\n\nCette action supprimera tous les cours et fiches de révision enregistrés sur votre compte Supabase et dans votre navigateur. Votre emploi du temps sera conservé.\n\nContinuer ?')) {
         try {
           await clearUserCourses();
-          alert('Tous vos cours ont été supprimés avec succès.');
+          toast('Tous vos cours ont été supprimés avec succès.', 'info');
         } catch (err: any) {
-          alert('Erreur lors de la suppression des cours : ' + formatSupabaseError(err));
+          toast('Erreur lors de la suppression des cours : ' + formatSupabaseError(err), 'error');
         }
       }
     });
@@ -841,7 +842,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
         });
         localStorage.removeItem('marges_supabase_url');
         localStorage.removeItem('marges_supabase_anon_key');
-        alert('Toutes les données locales ont été réinitialisées.');
+        toast('Toutes les données locales ont été réinitialisées.', 'info');
         window.location.reload();
       }
     });

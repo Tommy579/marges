@@ -18,6 +18,7 @@ const themes = (Object.keys(THEMES) as ThemeSlug[]).filter((t) => counts.has(t))
 const shortcuts = [
   { href: url('/emploi-du-temps/'), icon: 'calendar', title: 'Emploi du temps', desc: 'Semaine en cours' },
   { href: url('/cours/'), icon: 'folder', title: 'Cours', desc: `${subjects.length} matières` },
+  { href: url('/notes/'), icon: 'edit', title: 'Notes', desc: 'Prise de notes & fiches' },
   { href: url('/rappels/'), icon: 'bell', title: 'Rappels', desc: 'Lecture & révision' },
   { href: url('/textes/'), icon: 'book', title: 'Textes', desc: `${textes.length} publications` },
 ] as const;
@@ -474,7 +475,7 @@ const shortcuts = [
   /* Raccourcis */
   .shortcuts {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
     gap: .75rem;
     margin-top: 1rem;
   }

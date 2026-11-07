@@ -170,6 +170,16 @@ const subjectsList = subjects.map((s) => ({
       ))}
     </div>
 
+    <!-- État vide quand aucune matière n'est encore présente -->
+    <div id="courses-empty-state" class="panel" style={subjects.length === 0 ? 'text-align: center; padding: 2.5rem 1.5rem;' : 'display: none; text-align: center; padding: 2.5rem 1.5rem;'}>
+      <p style="font-family: var(--font-text); font-size: 1.2rem; margin: 0 0 0.35rem; font-weight: 600;">Aucune matière enregistrée pour le moment</p>
+      <p class="meta" style="margin: 0 0 1.25rem;">Créez votre première matière ou importez un dossier de cours pour retrouver vos PDF, TD et fiches de révision ici.</p>
+      <button type="button" class="btn btn--primary btn--sm" id="btn-empty-add-course">
+        <Icon name="folder" size={14} />
+        Ajouter ma première matière
+      </button>
+    </div>
+
     <!-- Modale de création et de classement de cours -->
     <CourseManagerModal />
 
@@ -217,6 +227,7 @@ const subjectsList = subjects.map((s) => ({
     syncLocalFilesToSupabaseStorage,
   } from '../../utils/fileStorage';
   import { processFolderUpload } from '../../utils/courseImport';
+  import { toast as notifyToast } from '../../utils/toast';
 
   function renderMarkdown(md: string): string {
     if (!md) return '<p class="meta">Aucun contenu.</p>';
@@ -284,14 +295,8 @@ const subjectsList = subjects.map((s) => ({
 
     let cachedDbCourses: DbCourse[] = [];
 
-    function showToast(msg: string) {
-      if (toast && toastMsg) {
-        toastMsg.textContent = msg;
-        toast.style.display = 'flex';
-        setTimeout(() => {
-          toast.style.display = 'none';
-        }, 5000);
-      }
+    function showToast(msg: string, tone: 'info' | 'success' | 'error' = 'success') {
+      notifyToast(msg, tone);
     }
 
     // Mise à jour de la liste déroulante des matières (Socle + Supabase)
@@ -415,7 +420,7 @@ const subjectsList = subjects.map((s) => ({
         if (folderImportStatus) folderImportStatus.style.display = 'none';
         await loadAndRenderSupabaseCourses();
       } catch (err: any) {
-        alert('Erreur importation dossier : ' + err.message);
+        showToast('Erreur importation dossier : ' + err.message, 'error');
         if (folderImportStatus) folderImportStatus.style.display = 'none';
       }
     });
@@ -436,6 +441,7 @@ const subjectsList = subjects.map((s) => ({
     }
 
     btnOpen?.addEventListener('click', () => openModal('tab-subject'));
+    document.getElementById('btn-empty-add-course')?.addEventListener('click', () => openModal('tab-subject'));
     btnClose?.addEventListener('click', () => modal?.close());
     btnCancelSubject?.addEventListener('click', () => modal?.close());
     btnCancelFile?.addEventListener('click', () => modal?.close());
@@ -476,7 +482,7 @@ const subjectsList = subjects.map((s) => ({
         showToast(`Matière « ${name} » enregistrée dans votre banque de cours Supabase !`);
         await loadAndRenderSupabaseCourses();
       } catch (err: any) {
-        alert('Erreur enregistrement Supabase : ' + (err.message || err));
+        showToast('Erreur enregistrement Supabase : ' + (err.message || err), 'error');
       }
     });
 
@@ -520,7 +526,7 @@ const subjectsList = subjects.map((s) => ({
           showToast(`Document « ${file.name} » enregistré et synchronisé !`);
           await loadAndRenderSupabaseCourses();
         } catch (err: any) {
-          alert('Erreur enregistrement Supabase: ' + err.message);
+          showToast('Erreur enregistrement Supabase : ' + err.message, 'error');
         }
       };
 
@@ -548,7 +554,7 @@ const subjectsList = subjects.map((s) => ({
         showToast(`Cours « ${title} » enregistré dans Supabase !`);
         await loadAndRenderSupabaseCourses();
       } catch (err: any) {
-        alert('Erreur enregistrement Supabase: ' + err.message);
+        showToast('Erreur enregistrement Supabase : ' + err.message, 'error');
       }
     });
 
@@ -865,7 +871,7 @@ const subjectsList = subjects.map((s) => ({
 
                 await loadAndRenderSupabaseCourses();
               } catch (err: any) {
-                alert('Erreur lors de la suppression : ' + err.message);
+                showToast('Erreur lors de la suppression : ' + err.message, 'error');
               }
             }
           });
@@ -979,7 +985,7 @@ const subjectsList = subjects.map((s) => ({
 
                   await loadAndRenderSupabaseCourses();
                 } catch (err: any) {
-                  alert(err.message);
+                  showToast(err.message, 'error');
                 }
               }
             });
@@ -1013,6 +1019,12 @@ const subjectsList = subjects.map((s) => ({
           <span class="sep">·</span>
           <span>Synchronisé</span>
         `;
+      }
+
+      const emptyEl = document.getElementById('courses-empty-state');
+      if (emptyEl) {
+        const hasAnyCard = container.querySelectorAll('.subject-card').length > 0;
+        emptyEl.style.display = hasAnyCard ? 'none' : 'block';
       }
 
       populateSubjectsSelect();

@@ -1325,6 +1325,10 @@ import { url } from '../../utils/url';
     tabDay?.addEventListener('click', () => switchView('day'));
     tabList?.addEventListener('click', () => switchView('list'));
 
+    if (window.matchMedia('(max-width: 48rem)').matches) {
+      switchView('day');
+    }
+
     // Export ICS
     document.getElementById('btn-export-ics')?.addEventListener('click', exportScheduleToIcs);
 
@@ -2815,15 +2819,16 @@ import { url } from '../../utils/url';
       gap: 0.65rem;
     }
 
-    .view-segmented {
+    .view-segmented-control {
       width: 100%;
       display: flex;
     }
 
-    .view-segmented .view-chip {
+    .view-segmented-control .view-tab-btn {
       flex: 1;
+      justify-content: center;
       text-align: center;
-      padding: 0.35rem 0.5rem;
+      padding: 0.4rem 0.5rem;
     }
 
     .filter-pills {
@@ -2842,7 +2847,7 @@ import { url } from '../../utils/url';
       min-width: 560px;
     }
 
-    .day-pills-row {
+    .day-selector-bar {
       -webkit-overflow-scrolling: touch;
       scroll-snap-type: x mandatory;
     }

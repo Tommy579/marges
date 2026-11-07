@@ -96,25 +96,25 @@ const serializedCourses = subjects.map((s) => ({
           <div id="panel-adjust-reminders" style="display: none; margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--line);">
             <form id="form-rappels-config" class="config-form" style="display: grid; gap: 1rem;">
               <div class="form-group">
-                <label class="form-checkbox main-toggle" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                  <input type="checkbox" id="rappels-enabled" checked />
-                  <strong>Activer la programmation automatique des alertes</strong>
+                <label class="switch-row">
+                  <span><strong>Activer la programmation automatique des alertes</strong></span>
+                  <input type="checkbox" class="switch" role="switch" id="rappels-enabled" checked />
                 </label>
               </div>
 
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                <div class="form-group" style="display: grid; gap: 0.35rem;">
-                  <label for="rappels-frequency" class="field-label" style="font-size: 0.85rem; font-weight: 600;">Fréquence :</label>
-                  <select id="rappels-frequency" style="padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--fg);">
+                <div class="field">
+                  <label for="rappels-frequency" class="field-label">Fréquence :</label>
+                  <select id="rappels-frequency" class="input">
                     <option value="daily">Quotidienne (chaque jour)</option>
                     <option value="twice_daily">Deux fois par jour (Matin & Soir)</option>
                     <option value="weekly">Hebdomadaire (un jour précis)</option>
                   </select>
                 </div>
 
-                <div class="form-group" style="display: grid; gap: 0.35rem;">
-                  <label for="rappels-content" class="field-label" style="font-size: 0.85rem; font-weight: 600;">Type de contenu :</label>
-                  <select id="rappels-content" style="padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--fg);">
+                <div class="field">
+                  <label for="rappels-content" class="field-label">Type de contenu :</label>
+                  <select id="rappels-content" class="input">
                     <option value="all">Aléatoire (Textes & Cours)</option>
                     <option value="philo">Textes de philosophie uniquement</option>
                     <option value="cours">Supports de cours uniquement</option>
@@ -123,19 +123,19 @@ const serializedCourses = subjects.map((s) => ({
               </div>
 
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;">
-                <div class="form-group" id="grp-rappels-time-1" style="display: grid; gap: 0.35rem;">
-                  <label for="rappels-time-1" class="field-label" id="lbl-rappels-time-1" style="font-size: 0.85rem; font-weight: 600;">Heure quotidienne :</label>
-                  <input type="time" id="rappels-time-1" value="09:00" style="padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--fg);" />
+                <div class="field" id="grp-rappels-time-1">
+                  <label for="rappels-time-1" class="field-label" id="lbl-rappels-time-1">Heure quotidienne :</label>
+                  <input type="time" id="rappels-time-1" class="input" value="09:00" />
                 </div>
 
-                <div class="form-group" id="grp-rappels-time-2" style="display: none; grid-gap: 0.35rem;">
-                  <label for="rappels-time-2" class="field-label" style="font-size: 0.85rem; font-weight: 600;">Deuxième heure (soir) :</label>
-                  <input type="time" id="rappels-time-2" value="18:30" style="padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--fg);" />
+                <div class="field" id="grp-rappels-time-2" style="display: none;">
+                  <label for="rappels-time-2" class="field-label">Deuxième heure (soir) :</label>
+                  <input type="time" id="rappels-time-2" class="input" value="18:30" />
                 </div>
 
-                <div class="form-group" id="grp-rappels-weekday" style="display: none; grid-gap: 0.35rem;">
-                  <label for="rappels-weekday" class="field-label" style="font-size: 0.85rem; font-weight: 600;">Jour de la semaine :</label>
-                  <select id="rappels-weekday" style="padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--fg);">
+                <div class="field" id="grp-rappels-weekday" style="display: none;">
+                  <label for="rappels-weekday" class="field-label">Jour de la semaine :</label>
+                  <select id="rappels-weekday" class="input">
                     <option value="1">Lundi</option>
                     <option value="2">Mardi</option>
                     <option value="3">Mercredi</option>
@@ -155,7 +155,7 @@ const serializedCourses = subjects.map((s) => ({
           </div>
 
           <div class="schedule-footer" style="margin-top: 1rem;">
-            <button type="button" class="btn btn--primary btn--sm" id="btn-trigger-now">
+            <button type="button" class="btn btn--sm" id="btn-trigger-now">
               Déclencher un rappel maintenant (test)
             </button>
           </div>
@@ -236,6 +236,7 @@ const serializedCourses = subjects.map((s) => ({
     getUserCoursesImmediate,
     type DbReminder,
   } from '../../utils/supabase';
+  import { toast } from '../../utils/toast';
 
   interface SuggestionItem {
     type: 'philo' | 'cours';
@@ -393,8 +394,9 @@ const serializedCourses = subjects.map((s) => ({
         updateSummaryDisplay(config);
         if (panelAdjust) panelAdjust.style.display = 'none';
         await loadAndRenderDbReminders();
+        toast('Réglages de rappels enregistrés.', 'success');
       } catch (err: any) {
-        alert(err.message || 'Erreur lors de la sauvegarde.');
+        toast(err.message || 'Erreur lors de la sauvegarde.', 'error');
       } finally {
         if (submitBtn) submitBtn.disabled = false;
       }
@@ -428,7 +430,7 @@ const serializedCourses = subjects.map((s) => ({
               <span class="meta" style="font-size: 0.82rem;">${timeShort}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <input type="checkbox" class="chk-db-reminder" ${r.enabled ? 'checked' : ''} title="Activer / Désactiver" />
+              <input type="checkbox" class="switch chk-db-reminder" role="switch" ${r.enabled ? 'checked' : ''} title="Activer / Désactiver" />
               <button type="button" class="btn btn--danger btn--sm btn-del-db-reminder" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">Supprimer</button>
             </div>
           `;
@@ -437,8 +439,9 @@ const serializedCourses = subjects.map((s) => ({
             const chk = e.target as HTMLInputElement;
             try {
               if (r.id) await toggleUserReminder(r.id, chk.checked);
+              toast(chk.checked ? 'Rappel activé.' : 'Rappel mis en pause.', 'info');
             } catch (err: any) {
-              alert(err.message || 'Erreur mise à jour');
+              toast(err.message || 'Erreur mise à jour', 'error');
               chk.checked = !chk.checked;
             }
           });
@@ -448,8 +451,9 @@ const serializedCourses = subjects.map((s) => ({
             try {
               if (r.id) await deleteUserReminder(r.id);
               await loadAndRenderDbReminders();
+              toast('Rappel supprimé.', 'info');
             } catch (err: any) {
-              alert(err.message || 'Erreur suppression');
+              toast(err.message || 'Erreur suppression', 'error');
             }
           });
 
@@ -575,8 +579,9 @@ const serializedCourses = subjects.map((s) => ({
         notif.onclick = () => {
           window.open(sug.url, '_blank');
         };
+        toast(notificationTitle, 'success');
       } else {
-        alert(`${notificationTitle}\n\n${notificationBody}\n\nLien : ${window.location.origin}${sug.url}`);
+        toast(`${notificationTitle} — ${notificationBody}`, 'info');
       }
 
       const history = loadHistory();
