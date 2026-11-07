@@ -26,10 +26,10 @@ const shortcuts = [
 
 <Base>
   <div class="container container--wide app-page home">
-    <!-- En-tête : salutation contextuelle -->
+    <!-- En-tête : salutation contextuelle et dateline éditoriale -->
     <header class="home-hero">
-      <p class="crumbs" data-today-date>&nbsp;</p>
-      <h1 class="home-greeting"><span data-greeting>Bonjour</span>.</h1>
+      <h1 class="home-greeting"><span data-greeting>Bonjour</span><span class="accent-dot">.</span></h1>
+      <p class="home-dateline meta" data-today-date>&nbsp;</p>
     </header>
 
     <div class="home-grid">
@@ -50,15 +50,16 @@ const shortcuts = [
           <noscript><p class="hint">Activez JavaScript pour afficher vos cours du jour.</p></noscript>
         </section>
 
-        <!-- Raccourcis -->
+        <!-- Raccourcis : Index éditorial -->
         <nav class="shortcuts" aria-label="Accès rapides">
-          {shortcuts.map((s) => (
-            <a href={s.href} class="panel panel--link shortcut" data-shortcut-id={s.title.toLowerCase()}>
-              <span class="icon-tile"><Icon name={s.icon} size={18} /></span>
+          {shortcuts.map((s, idx) => (
+            <a href={s.href} class="shortcut" data-shortcut-id={s.title.toLowerCase()}>
+              <span class="shortcut-num" aria-hidden="true">0{idx + 1}</span>
               <span class="shortcut-text">
                 <strong>{s.title}</strong>
                 <small data-shortcut-desc={s.title.toLowerCase()}>{s.desc}</small>
               </span>
+              <Icon name="arrow-right" size={14} class="shortcut-arrow" />
             </a>
           ))}
         </nav>
@@ -391,19 +392,28 @@ const shortcuts = [
 </script>
 
 <style>
-  .home-hero { padding-block: clamp(2rem, 1.5rem + 3vw, 3.75rem) clamp(1.5rem, 1rem + 2vw, 2.5rem); }
+  .home-hero {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding-block: clamp(2rem, 1.5rem + 2.5vw, 3.25rem) 1.25rem;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 2rem;
+  }
   .home-greeting {
-    font-family: var(--font-text);
+    font-family: var(--font-text) !important;
     font-size: clamp(2.2rem, 1.7rem + 2.4vw, 3.4rem);
     letter-spacing: -.035em;
-    margin: .35rem 0 .35rem;
-  }
-  .home-motto {
-    font-family: var(--font-text);
-    font-style: italic;
-    font-size: 1.15rem;
-    color: var(--muted);
     margin: 0;
+  }
+  .accent-dot {
+    color: var(--accent);
+  }
+  .home-dateline {
+    margin: 0;
+    font-size: .88rem;
   }
 
   .home-grid {
@@ -438,15 +448,15 @@ const shortcuts = [
     display: grid;
     grid-template-columns: 3.5rem minmax(0, 1fr);
     gap: 1rem;
-    padding: .75rem .9rem;
+    padding: .75rem .95rem;
     border-radius: var(--radius);
     background: var(--soft);
-    border-left: 3px solid var(--line-strong);
-    transition: opacity .2s ease;
+    border: 1px solid var(--line);
+    transition: opacity .2s ease, border-color .2s ease;
   }
   .timeline :global(.tl-item[data-state='past']) { opacity: .5; }
   .timeline :global(.tl-item[data-state='live']) {
-    border-left-color: var(--success);
+    border-color: color-mix(in srgb, var(--success) 45%, var(--line));
     background: color-mix(in srgb, var(--success) 8%, var(--soft));
   }
   .timeline :global(.tl-time) {
@@ -472,17 +482,58 @@ const shortcuts = [
   .timeline :global(.tl-title) { margin: 0; font-weight: 600; font-size: .95rem; line-height: 1.35; }
   .timeline :global(.tl-loc) { margin: .15rem 0 0; font-size: .82rem; color: var(--muted); }
 
-  /* Raccourcis */
+  /* Raccourcis : Index éditorial à filets */
   .shortcuts {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
-    gap: .75rem;
-    margin-top: 1rem;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin-top: 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
   }
-  .shortcut { display: flex; align-items: center; gap: .75rem; padding: .85rem 1rem; }
-  .shortcut-text { display: grid; min-width: 0; }
-  .shortcut-text strong { font-size: .9rem; font-weight: 600; }
-  .shortcut-text small { font-size: .78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .shortcut {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: .55rem;
+    padding: .95rem 1rem;
+    color: inherit;
+    text-decoration: none;
+    border-right: 1px solid var(--line);
+    position: relative;
+    transition: background-color .18s ease;
+  }
+  .shortcut:last-child { border-right: none; }
+  .shortcut:hover {
+    background: var(--soft);
+    text-decoration: none;
+  }
+  .shortcut-num {
+    font-family: var(--font-ui);
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .04em;
+  }
+  .shortcut-text { display: grid; gap: .1rem; min-width: 0; }
+  .shortcut-text strong { font-size: .9rem; font-weight: 600; color: var(--fg); }
+  .shortcut-text small { font-size: .77rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .shortcut :global(.shortcut-arrow) {
+    position: absolute;
+    top: .95rem;
+    right: .9rem;
+    color: var(--muted);
+    opacity: .45;
+    transition: transform .2s var(--ease), opacity .2s ease, color .2s ease;
+  }
+  .shortcut:hover :global(.shortcut-arrow) {
+    transform: translateX(3px);
+    opacity: 1;
+    color: var(--accent);
+  }
 
   /* Lectures */
   .text-list { list-style: none; margin: 0; padding: 0; }
@@ -542,9 +593,14 @@ const shortcuts = [
   }
   @media (max-width: 52rem) {
     .shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .shortcut { border-bottom: 1px solid var(--line); }
+    .shortcut:nth-child(2n) { border-right: none; }
+    .shortcut:last-child { grid-column: 1 / -1; border-bottom: none; border-right: none; }
   }
   @media (max-width: 36rem) {
     .shortcuts { grid-template-columns: 1fr; }
+    .shortcut { border-right: none; border-bottom: 1px solid var(--line); }
+    .shortcut:last-child { border-bottom: none; }
     .shortcut-text small { white-space: normal; }
     .today-head { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
     .timeline :global(.tl-item) {

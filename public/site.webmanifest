@@ -7,8 +7,8 @@
   "start_url": "/marges/",
   "scope": "/marges/",
   "display": "standalone",
-  "background_color": "#121214",
-  "theme_color": "#121214",
+  "background_color": "#faf6f0",
+  "theme_color": "#c8553d",
   "icons": [
     {
       "src": "/marges/favicon.svg?v=3",

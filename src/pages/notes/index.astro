@@ -1318,7 +1318,7 @@ const subjectsList = subjects.map((s) => ({
     padding: 0.8rem 0.95rem;
     border-radius: var(--radius);
     background: var(--soft);
-    border-left: 3px solid var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
     margin: 0.9rem 0;
     font-size: 0.94rem;
   }
@@ -1331,13 +1331,13 @@ const subjectsList = subjects.map((s) => ({
 
   :global(.notion-rendered-content .notion-callout--important),
   :global(.notion-rendered-content .notion-callout--warning) {
-    border-left-color: var(--warning);
+    border-color: color-mix(in srgb, var(--warning) 40%, var(--line));
   }
 
   :global(.notion-rendered-content .notion-quote) {
     margin: 0.9rem 0;
     padding-left: 0.9rem;
-    border-left: 3px solid var(--line-strong);
+    border-left: 1px solid var(--line-strong);
     color: var(--muted);
     font-style: italic;
   }

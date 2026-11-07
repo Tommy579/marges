@@ -42,13 +42,12 @@ const localPresetCourses = getCourses().map((s) => {
   description="Accédez à vos cours privés, votre emploi du temps et vos rappels synchronisés en toute sécurité."
 >
   <div class="container container--wide app-page espace-page" data-espace-root data-local-presets={JSON.stringify(localPresetCourses)}>
-    <header class="page-header espace-hero">
+    <header class="page-header espace-hero" id="espace-hero-header" style="display: none;">
       <div class="espace-hero-top">
         <div>
-          <p class="crumbs"><a href={url('/')}>Accueil</a> / Espace Personnel</p>
           <h1 class="espace-title">Mon Espace</h1>
           <p class="espace-motto">
-            Données privées protégées par Row Level Security (RLS) et synchronisées avec Supabase.
+            Vos cours privés, votre emploi du temps et vos rappels synchronisés avec Supabase.
           </p>
         </div>
         <div class="espace-auth-actions" id="user-top-actions" style="display: none;">
@@ -74,16 +73,46 @@ const localPresetCourses = getCourses().map((s) => {
       <span id="espace-banner-text">Message</span>
     </div>
 
-    <!-- 1. VUE NON CONNECTÉ (FORMULAIRE DE CONNEXION) -->
+    <!-- 1. VUE NON CONNECTÉ (FORMULAIRE DE CONNEXION ÉDITORIAL) -->
     <div id="view-login" class="espace-section">
-      <div class="panel auth-card">
-        <div class="card-head">
-          <span class="icon-tile"><Icon name="user" size={20} /></span>
-          <div>
-            <h2>Connexion à votre espace</h2>
-            <p class="meta">Entrez les identifiants fournis par l'administrateur</p>
-          </div>
+      <div class="login-editorial-split">
+        <div class="login-editorial-lead">
+          <h1 class="login-display-title">Un carnet de lecture, d’étude et de notes<span class="accent-dot">.</span></h1>
+          <p class="login-display-sub">
+            Essais philosophiques, emploi du temps universitaire, supports de cours PDF et fiches de révision réunis dans une interface calme, sans publicité ni traçage.
+          </p>
+          <ol class="login-pillars" role="list">
+            <li>
+              <span class="pillar-num">01</span>
+              <div>
+                <strong>Textes &amp; essais</strong>
+                <span>Lecture longue composée en Source Serif, annotations et thèmes.</span>
+              </div>
+            </li>
+            <li>
+              <span class="pillar-num">02</span>
+              <div>
+                <strong>Emploi du temps &amp; cours</strong>
+                <span>Synchronisation iCal (.ics), visionneuse PDF intégrée et classement par matière.</span>
+              </div>
+            </li>
+            <li>
+              <span class="pillar-num">03</span>
+              <div>
+                <strong>Notes &amp; rappels</strong>
+                <span>Éditeur Markdown structuré et alertes de révision programmées.</span>
+              </div>
+            </li>
+          </ol>
         </div>
+
+        <div class="panel auth-card">
+          <div class="card-head">
+            <div>
+              <h2>Connexion à votre espace</h2>
+              <p class="meta">Entrez vos identifiants pour accéder à votre bibliothèque et vos cours</p>
+            </div>
+          </div>
 
         <form id="form-login" class="espace-form">
           <div class="form-group">
@@ -164,8 +193,9 @@ const localPresetCourses = getCourses().map((s) => {
 
         <div class="auth-security-notice meta">
           <p>
-            <strong>Protection des données :</strong> Les comptes sont créés sur invitation. Chaque utilisateur dispose de son espace étanche : grâce aux politiques PostgreSQL Row Level Security (RLS), vos cours privés, plannings et rappels ne sont accessibles que par vous.
+            Accès sur invitation. Chaque compte dispose d’un stockage isolé et chiffré via Supabase.
           </p>
+        </div>
         </div>
       </div>
     </div>
@@ -580,6 +610,7 @@ const localPresetCourses = getCourses().map((s) => {
   function initEspace() {
     const viewLogin = document.getElementById('view-login');
     const viewDashboard = document.getElementById('view-dashboard');
+    const espaceHeroHeader = document.getElementById('espace-hero-header');
     const userTopActions = document.getElementById('user-top-actions');
     const userDisplayEmail = document.getElementById('user-display-email');
     const btnLogout = document.getElementById('btn-logout');
@@ -745,6 +776,7 @@ const localPresetCourses = getCourses().map((s) => {
         if (session && session.user) {
           if (viewLogin) viewLogin.style.display = 'none';
           if (viewDashboard) viewDashboard.style.display = 'block';
+          if (espaceHeroHeader) espaceHeroHeader.style.display = 'block';
           if (userTopActions) userTopActions.style.display = 'flex';
           if (userDisplayEmail) {
             const fullName = session.user.user_metadata?.full_name;
@@ -765,6 +797,7 @@ const localPresetCourses = getCourses().map((s) => {
         } else {
           if (viewLogin) viewLogin.style.display = 'block';
           if (viewDashboard) viewDashboard.style.display = 'none';
+          if (espaceHeroHeader) espaceHeroHeader.style.display = 'none';
           if (userTopActions) userTopActions.style.display = 'none';
         }
       } catch (err: any) {
@@ -1900,11 +1933,12 @@ const localPresetCourses = getCourses().map((s) => {
     gap: 0.75rem;
     padding: 0.85rem 1.25rem;
     margin-bottom: 2rem;
-    border-left: 3px solid var(--fg);
+    border: 1px solid var(--line-strong);
     font-size: 0.9rem;
   }
   .banner-error {
-    border-left-color: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+    background: color-mix(in srgb, var(--danger) 8%, var(--surface));
     color: var(--danger);
   }
   .banner-dot {
@@ -1914,11 +1948,85 @@ const localPresetCourses = getCourses().map((s) => {
     background: currentColor;
   }
 
+  .login-editorial-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(20rem, 28rem);
+    gap: clamp(2rem, 4vw, 4.5rem);
+    align-items: center;
+    padding-block: clamp(2rem, 4vw, 4.5rem) 2rem;
+  }
+  .login-editorial-lead {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .login-display-title {
+    font-family: var(--font-text) !important;
+    font-size: clamp(2.1rem, 1.6rem + 2.2vw, 3.35rem);
+    font-weight: 600;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    margin: 0;
+  }
+  .accent-dot {
+    color: var(--accent);
+  }
+  .login-display-sub {
+    font-family: var(--font-text);
+    font-size: 1.12rem;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0;
+    max-width: 48ch;
+  }
+  .login-pillars {
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    border-top: 1px solid var(--line);
+  }
+  .login-pillars li {
+    display: grid;
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.95rem 0;
+    border-bottom: 1px solid var(--line);
+    align-items: baseline;
+  }
+  .pillar-num {
+    font-family: var(--font-ui);
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+  }
+  .login-pillars strong {
+    display: block;
+    font-family: var(--font-ui);
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 0.15rem;
+  }
+  .login-pillars span {
+    font-family: var(--font-ui);
+    font-size: 0.84rem;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+
   .auth-card {
-    max-width: 32rem;
     width: 100%;
-    margin: 2rem auto;
-    padding: clamp(1.25rem, 1rem + 1vw, 2.25rem);
+    margin: 0;
+    padding: clamp(1.5rem, 1.2rem + 1vw, 2.25rem);
+  }
+  @media (max-width: 56rem) {
+    .login-editorial-split {
+      grid-template-columns: 1fr;
+      gap: 2rem;
+      padding-block: 1.5rem 1rem;
+    }
   }
   .auth-card-actions {
     display: flex;
@@ -2399,7 +2507,7 @@ const localPresetCourses = getCourses().map((s) => {
   }
   .markdown-preview blockquote,
   .markdown-rendered-view blockquote {
-    border-left: 3px solid var(--fg);
+    border-left: 1px solid var(--line-strong);
     padding-left: 1rem;
     margin-left: 0;
     color: var(--muted);

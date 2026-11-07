@@ -14,39 +14,40 @@
 :root {
   color-scheme: light dark;
 
-  /* Surfaces & encre */
-  --bg: #fcfcfb;
-  --surface: #ffffff;
-  --soft: #f4f3f0;
-  --fg: #141414;
-  --muted: #66655f;
-  --line: #e7e5e0;
-  --line-strong: #cfcdc6;
+  /* Surfaces & encre — Archétype Éditorial (Crème & Terracotta, dosage 60-30-10) */
+  --bg: #faf6f0;
+  --surface: #fffdf9;
+  --soft: #ede4d7;
+  --fg: #1f1d1a;
+  --muted: #6b635b;
+  --line: #e2d9c8;
+  --line-strong: #c9bfa8;
 
   /* Couleurs sémantiques (utilisées avec parcimonie) */
-  --accent: #3e5bd8;
-  --success: #1a7f4e;
-  --warning: #a35c00;
-  --danger: #c9302c;
-  --tone-philo: #6d4fd1;
-  --tone-cours: #1a7f4e;
+  --accent: #c8553d;
+  --on-accent: #fffdf9;
+  --success: #1f6b45;
+  --warning: #9e5808;
+  --danger: #b8322a;
+  --tone-philo: #8c4a27;
+  --tone-cours: #1f6b45;
 
   --font-text: 'Source Serif 4 Variable', 'Source Serif Pro', Georgia, 'Times New Roman', serif;
   --font-ui: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --measure: 66ch;
-  --wide: 72rem;
-  --gutter: 1.25rem;
+  --wide: 74rem;
+  --gutter: 1.5rem;
   --header-h: 3.75rem;
-  --radius: 10px;
-  --r-sm: 6px;
-  --r-lg: 14px;
+  --radius: 8px;
+  --r-sm: 5px;
+  --r-lg: 10px;
 
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / .04), 0 1px 1px rgb(0 0 0 / .03);
-  --shadow-md: 0 8px 24px -8px rgb(0 0 0 / .12), 0 2px 6px rgb(0 0 0 / .04);
+  --shadow-sm: 0 1px 2px rgb(31 29 26 / .04), 0 4px 12px -2px rgb(31 29 26 / .04);
+  --shadow-md: 0 12px 28px -8px rgb(31 29 26 / .12), 0 2px 6px -1px rgb(31 29 26 / .05);
 
-  --ease: cubic-bezier(.2, .7, .2, 1);
-  --dur: .25s;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --dur: .22s;
 }
 
 @media (max-width: 52rem) {
@@ -199,21 +200,22 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']),
   :root:not([data-theme='light'])[data-ambiance] {
-    --bg: var(--_dark-bg, #0b0b0c);
-    --surface: var(--_dark-surface, #121214);
-    --soft: var(--_dark-soft, #18181b);
-    --fg: var(--_dark-fg, #ededec);
-    --muted: var(--_dark-muted, #9d9c97);
-    --line: var(--_dark-line, #242427);
-    --line-strong: var(--_dark-line-strong, #3a3a3e);
-    --accent: var(--_dark-accent, #8ea4ff);
+    --bg: var(--_dark-bg, #121110);
+    --surface: var(--_dark-surface, #1a1816);
+    --soft: var(--_dark-soft, #24211e);
+    --fg: var(--_dark-fg, #f2ece4);
+    --muted: var(--_dark-muted, #a39b90);
+    --line: var(--_dark-line, #2e2a26);
+    --line-strong: var(--_dark-line-strong, #423c36);
+    --accent: var(--_dark-accent, #e06d53);
+    --on-accent: #121110;
     --success: #4cc38a;
     --warning: #f0b44c;
     --danger: #ff6b66;
-    --tone-philo: #b4a1ff;
+    --tone-philo: #e6956e;
     --tone-cours: #4cc38a;
-    --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
-    --shadow-md: 0 10px 30px -10px rgb(0 0 0 / .7);
+    --shadow-sm: 0 2px 6px rgb(0 0 0 / .35);
+    --shadow-md: 0 14px 34px -10px rgb(0 0 0 / .65);
   }
 }
 
@@ -222,21 +224,22 @@
 :root[data-theme='dark'],
 :root[data-theme='dark'][data-ambiance] {
   color-scheme: dark;
-  --bg: var(--_dark-bg, #0b0b0c);
-  --surface: var(--_dark-surface, #121214);
-  --soft: var(--_dark-soft, #18181b);
-  --fg: var(--_dark-fg, #ededec);
-  --muted: var(--_dark-muted, #9d9c97);
-  --line: var(--_dark-line, #242427);
-  --line-strong: var(--_dark-line-strong, #3a3a3e);
-  --accent: var(--_dark-accent, #8ea4ff);
+  --bg: var(--_dark-bg, #121110);
+  --surface: var(--_dark-surface, #1a1816);
+  --soft: var(--_dark-soft, #24211e);
+  --fg: var(--_dark-fg, #f2ece4);
+  --muted: var(--_dark-muted, #a39b90);
+  --line: var(--_dark-line, #2e2a26);
+  --line-strong: var(--_dark-line-strong, #423c36);
+  --accent: var(--_dark-accent, #e06d53);
+  --on-accent: #121110;
   --success: #4cc38a;
   --warning: #f0b44c;
   --danger: #ff6b66;
-  --tone-philo: #b4a1ff;
+  --tone-philo: #e6956e;
   --tone-cours: #4cc38a;
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
-  --shadow-md: 0 10px 30px -10px rgb(0 0 0 / .7);
+  --shadow-sm: 0 2px 6px rgb(0 0 0 / .35);
+  --shadow-md: 0 14px 34px -10px rgb(0 0 0 / .65);
 }
 
 /* --------------------------------------------------------------------------
@@ -251,6 +254,8 @@ html {
   scroll-padding-top: 4rem;
   hanging-punctuation: first last;
   overflow-x: clip;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -266,14 +271,16 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-text);
-  font-size: clamp(1.05rem, 0.98rem + .35vw, 1.25rem);
+  font-size: clamp(1.05rem, 0.98rem + .35vw, 1.22rem);
   font-optical-sizing: auto;
   line-height: 1.7;
   font-kerning: normal;
   font-variant-ligatures: common-ligatures;
+  font-variant-numeric: oldstyle-nums proportional-nums;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  caret-color: var(--accent);
   overflow-x: clip;
   transition: background-color var(--dur) ease, color var(--dur) ease;
 }
@@ -286,9 +293,12 @@ main {
 
 img, svg, video { display: block; max-width: 100%; height: auto; }
 
-button, input, select, textarea { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; caret-color: var(--accent); }
 
-::selection { background: var(--fg); color: var(--bg); }
+::selection {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: var(--fg);
+}
 
 /* --------------------------------------------------------------------------
    3. Typographie
@@ -589,17 +599,17 @@ code, kbd {
     text-align: center;
   }
 }
-.btn:hover { border-color: var(--fg); text-decoration: none; }
-.btn:active { transform: scale(.98); }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn:hover { border-color: var(--fg); background: var(--soft); text-decoration: none; transform: translateY(-1px); }
+.btn:active { transform: translateY(0) scale(.98); }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 .btn svg { flex: none; }
-.btn--primary { --_bg: var(--fg); --_fg: var(--bg); --_bd: var(--fg); }
-.btn--primary:hover { --_bg: color-mix(in srgb, var(--fg) 85%, var(--bg)); }
+.btn--primary { --_bg: var(--accent); --_fg: #fffdf9; --_bd: var(--accent); font-weight: 600; box-shadow: 0 1px 2px rgb(31 29 26 / .12); }
+.btn--primary:hover { --_bg: color-mix(in srgb, var(--accent) 88%, #000); border-color: color-mix(in srgb, var(--accent) 88%, #000); background: var(--_bg); }
 .btn--ghost { --_bg: transparent; --_bd: transparent; }
 .btn--ghost:hover { --_bg: var(--soft); border-color: transparent; }
 .btn--danger { --_fg: var(--danger); --_bd: color-mix(in srgb, var(--danger) 35%, transparent); }
-.btn--danger:hover { --_bg: color-mix(in srgb, var(--danger) 8%, transparent); border-color: var(--danger); }
-.btn--sm { min-height: 2rem; padding: .3rem .7rem; font-size: .82rem; }
+.btn--danger:hover { --_bg: color-mix(in srgb, var(--danger) 10%, transparent); background: var(--_bg); border-color: var(--danger); }
+.btn--sm { min-height: 2.1rem; padding: .35rem .8rem; font-size: .83rem; }
 
 /* Champs de formulaire */
 .field { display: grid; gap: .4rem; }
@@ -813,6 +823,53 @@ code, kbd {
 }
 .toast--error { --_tone: var(--danger); }
 .toast--info { --_tone: var(--accent); }
+.toast--alert {
+  padding: .9rem 1.05rem;
+  border: 1px solid color-mix(in srgb, var(--bg) 18%, transparent);
+}
+.toast-alert-body {
+  display: grid;
+  gap: .25rem;
+  min-width: 0;
+  flex: 1;
+}
+.toast-alert-title {
+  font-weight: 600;
+  font-size: .9rem;
+  line-height: 1.3;
+  color: var(--bg);
+}
+.toast-alert-desc {
+  margin: 0;
+  font-size: .8rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--bg) 78%, transparent);
+}
+.toast-alert-actions {
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  margin-top: .35rem;
+}
+.toast-alert-link {
+  color: var(--bg);
+  font-size: .8rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
+.toast-alert-dismiss {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--bg) 68%, transparent);
+  font: inherit;
+  font-size: .78rem;
+  cursor: pointer;
+}
+.toast-alert-dismiss:hover {
+  color: var(--bg);
+}
 .toast.is-leaving { animation: toast-out .2s ease both; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(4px); } }

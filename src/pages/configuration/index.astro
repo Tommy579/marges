@@ -18,8 +18,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
     <header class="page-header config-hero">
       <div class="config-hero-top">
         <div>
-          <p class="crumbs"><a href={url('/')}>Accueil</a> / Paramètres</p>
-          <h1 class="config-title">Configuration & Paramètres</h1>
+          <h1 class="config-title">Configuration &amp; Paramètres<span style="color: var(--accent);">.</span></h1>
           <p class="config-motto">
             Paramétrez vos fichiers de cours, votre calendrier et vos alertes en local sur votre machine.
           </p>
@@ -355,6 +354,8 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
   import {
     getUnifiedReminderConfig,
     saveUnifiedReminderConfig,
+    formatPermissionStatusLabel,
+    requestNotificationPermission,
   } from '../../utils/reminders';
   import {
     fetchCalendarFromUrl,
@@ -796,25 +797,20 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
     }
 
     function checkPerm() {
-      if (!('Notification' in window)) {
-        if (notifPermStatus) notifPermStatus.textContent = 'Non supportées';
-        return;
-      }
-      const perm = Notification.permission;
+      const info = formatPermissionStatusLabel();
       if (notifPermStatus) {
-        if (perm === 'granted') notifPermStatus.textContent = 'Autorisées';
-        else if (perm === 'denied') notifPermStatus.textContent = 'Bloquées';
-        else notifPermStatus.textContent = 'En attente d’autorisation';
+        notifPermStatus.textContent = info.label;
+      }
+      if (btnReqNotifPerm) {
+        (btnReqNotifPerm as HTMLButtonElement).style.display = info.canRequest ? 'inline-flex' : 'none';
       }
     }
 
     checkPerm();
 
     btnReqNotifPerm?.addEventListener('click', async () => {
-      if ('Notification' in window) {
-        await Notification.requestPermission();
-        checkPerm();
-      }
+      await requestNotificationPermission();
+      checkPerm();
     });
 
     const btnDeleteAllCourses = document.getElementById('btn-delete-all-courses');
@@ -975,7 +971,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
     background: var(--soft);
     padding: 1rem 1.25rem;
     border-radius: var(--radius);
-    border-left: 3px solid var(--fg);
+    border: 1px solid var(--line-strong);
   }
   .status-indicator {
     display: flex;

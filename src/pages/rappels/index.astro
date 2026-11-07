@@ -18,7 +18,7 @@ const serializedTextes = textes.map((t) => ({
 const serializedCourses = subjects.map((s) => ({
   id: s.id,
   title: s.name,
-  url: `/cours/#folder-${s.id}`,
+  url: url(`/cours/#folder-${s.id}`),
 }));
 ---
 
@@ -35,8 +35,7 @@ const serializedCourses = subjects.map((s) => ({
     <header class="page-header reminders-hero">
       <div class="reminders-hero-top">
         <div>
-          <p class="crumbs"><a href={url('/')}>Accueil</a> / Notifications</p>
-          <h1 class="reminders-title">Rappels automatiques</h1>
+          <h1 class="reminders-title">Rappels automatiques<span style="color: var(--accent);">.</span></h1>
           <p class="reminders-motto">
             Votre assistant personnel pour rythmer vos lectures philosophiques et révisions académiques.
           </p>
@@ -217,7 +216,6 @@ const serializedCourses = subjects.map((s) => ({
 <script>
   import {
     STORAGE_KEYS,
-    savePersistentJSON,
     loadPersistentJSON,
     type ReminderScheduleConfig,
     type NotificationLogItem,
@@ -228,6 +226,10 @@ const serializedCourses = subjects.map((s) => ({
     formatFrequencyLabel,
     formatTimesLabel,
     formatContentLabel,
+    sendCrossPlatformNotification,
+    formatPermissionStatusLabel,
+    requestNotificationPermission,
+    startGlobalReminderWatcher,
   } from '../../utils/reminders';
   import {
     fetchUserReminders,
@@ -499,7 +501,7 @@ const serializedCourses = subjects.map((s) => ({
           typeLabel: 'Bibliothèque',
           title: 'Explorer les textes',
           desc: 'Retrouvez vos lectures et essais',
-          url: '/textes/',
+          url: `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/textes/`,
         };
       }
     }
@@ -565,82 +567,58 @@ const serializedCourses = subjects.map((s) => ({
 
     renderHistory();
 
-    // 4. Déclencher un rappel maintenant
-    function triggerNotification() {
+    // 4. Déclencher un rappel maintenant (compatible tous navigateurs & appareils)
+    async function triggerNotification() {
       const sug = getRandomContent();
-      const notificationTitle = sug.type === 'philo' ? `Lecture philosophique : ${sug.title}` : `Révision de cours : ${sug.title}`;
+      const notificationTitle =
+        sug.type === 'philo' ? `Lecture philosophique : ${sug.title}` : `Révision de cours : ${sug.title}`;
       const notificationBody = sug.desc;
 
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const notif = new Notification(notificationTitle, {
-          body: notificationBody,
-          icon: '/favicon.svg',
-        });
-        notif.onclick = () => {
-          window.open(sug.url, '_blank');
-        };
-        toast(notificationTitle, 'success');
-      } else {
-        toast(`${notificationTitle} — ${notificationBody}`, 'info');
-      }
-
-      const history = loadHistory();
-      history.unshift({
-        id: Math.random().toString(),
-        timestamp: Date.now(),
-        title: sug.title,
+      await sendCrossPlatformNotification({
+        title: notificationTitle,
+        body: notificationBody,
+        historyTitle: sug.title,
         type: sug.type,
         url: sug.url,
       });
-      savePersistentJSON(STORAGE_KEYS.NOTIFICATIONS_HISTORY, history.slice(0, 50));
+
       renderHistory();
     }
 
-    btnTriggerNow?.addEventListener('click', triggerNotification);
+    btnTriggerNow?.addEventListener('click', () => {
+      triggerNotification();
+    });
 
-    // 5. Autorisations du navigateur
+    // 5. Autorisations du navigateur (Desktop, Android, iOS/iPadOS PWA)
     function updatePermissionUI() {
-      if (!('Notification' in window)) {
-        if (statusEl) statusEl.textContent = 'Non supporté par ce navigateur.';
-        if (btnReq) (btnReq as HTMLButtonElement).disabled = true;
-        return;
-      }
-      const perm = Notification.permission;
+      const info = formatPermissionStatusLabel();
       if (statusEl) {
-        if (perm === 'granted') statusEl.textContent = 'Autorisées & actives';
-        else if (perm === 'denied') statusEl.textContent = 'Bloquées dans votre navigateur';
-        else statusEl.textContent = 'En attente d’autorisation';
+        statusEl.textContent = info.label;
       }
       if (btnReq) {
-        btnReq.style.display = perm === 'granted' ? 'none' : 'inline-block';
+        btnReq.style.display = info.canRequest ? 'inline-flex' : 'none';
       }
     }
 
     updatePermissionUI();
     document.getElementById('btn-request-perm')?.addEventListener('click', async () => {
-      if ('Notification' in window) {
-        await Notification.requestPermission();
-        updatePermissionUI();
-      }
+      await requestNotificationPermission();
+      updatePermissionUI();
     });
 
-    // 6. Surveillance récurrente
-    setInterval(() => {
-      if (!config.enabled) return;
-      const now = new Date();
-      const currentHHMM = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    // 6. Synchronisation avec le surveillant global des rappels
+    startGlobalReminderWatcher();
 
-      if (now.getSeconds() < 15) {
-        if (config.frequency === 'weekly') {
-          const currentDay = now.getDay() === 0 ? 7 : now.getDay();
-          if (currentDay !== config.weekday) return;
-        }
+    const onScheduledTrigger = (e: Event) => {
+      e.preventDefault();
+      triggerNotification();
+    };
+    const onNotificationSent = () => {
+      renderHistory();
+    };
 
-        if (config.times && config.times.includes(currentHHMM)) {
-          triggerNotification();
-        }
-      }
-    }, 15000);
+    window.addEventListener('marges:trigger-scheduled-reminder', onScheduledTrigger);
+    window.addEventListener('marges:notification-sent', onNotificationSent);
   }
 
   if (typeof window !== 'undefined') {
@@ -689,7 +667,7 @@ const serializedCourses = subjects.map((s) => ({
     align-items: center;
     padding: 1rem 1.25rem;
     margin-bottom: 2rem;
-    border-left: 3px solid var(--fg);
+    border: 1px solid var(--line-strong);
   }
 
   .reminders-grid {
@@ -821,7 +799,7 @@ const serializedCourses = subjects.map((s) => ({
     background: var(--soft);
     border-radius: var(--radius);
     gap: 1rem;
-    border-left: 3px solid var(--line-strong);
+    border: 1px solid var(--line);
   }
   .history-time {
     display: grid;

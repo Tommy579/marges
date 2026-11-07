@@ -18,7 +18,7 @@ const isConfig = path.includes('/configuration');
 <header class="site-header">
   <div class="container container--wide header-inner">
     <a class="brand" href={url('/')} aria-label={`${SITE.title} — accueil`}>
-      {SITE.title}
+      {SITE.title}<span class="brand-dot" aria-hidden="true">.</span>
     </a>
 
     <nav class="nav" aria-label="Navigation principale">
@@ -75,19 +75,25 @@ const isConfig = path.includes('/configuration');
 
   .brand {
     font-family: var(--font-text);
-    font-size: 1.25rem;
+    font-size: 1.35rem;
     font-weight: 650;
-    letter-spacing: -.015em;
+    letter-spacing: -.02em;
     text-decoration: none;
     font-style: italic;
     flex: none;
+    padding-right: 1.25rem;
+    border-right: 1px solid var(--line);
   }
-  .brand:hover { text-decoration: none; opacity: .7; }
+  .brand-dot {
+    color: var(--accent);
+    font-style: normal;
+  }
+  .brand:hover { text-decoration: none; opacity: .78; }
 
   .nav { flex: 1; min-width: 0; }
   .nav ul {
     display: flex;
-    gap: .15rem;
+    gap: .25rem;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -95,26 +101,42 @@ const isConfig = path.includes('/configuration');
     font-size: .88rem;
   }
   .nav a {
+    position: relative;
     display: block;
-    padding: .4rem .75rem;
-    border-radius: 999px;
+    padding: .42rem .75rem;
+    border-radius: var(--r-sm);
     color: var(--muted);
     text-decoration: none;
     white-space: nowrap;
-    transition: color .15s ease, background-color .15s ease;
+    transition: color .18s ease, background-color .18s ease;
   }
-  .nav a:hover { color: var(--fg); background: var(--soft); }
+  .nav a::after {
+    content: '';
+    position: absolute;
+    left: .75rem;
+    right: .75rem;
+    bottom: .15rem;
+    height: 2px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform .22s var(--ease);
+    border-radius: 2px;
+  }
+  .nav a:hover { color: var(--fg); background: color-mix(in srgb, var(--soft) 65%, transparent); }
+  .nav a:hover::after { transform: scaleX(1); }
   .nav a[aria-current='page'] {
     color: var(--fg);
-    background: var(--soft);
     font-weight: 600;
-    box-shadow: inset 0 0 0 1px var(--line-strong);
+  }
+  .nav a[aria-current='page']::after {
+    transform: scaleX(1);
   }
 
   .header-actions {
     display: flex;
     align-items: center;
-    gap: .25rem;
+    gap: .3rem;
     flex: none;
   }
   .icon-link {
@@ -122,20 +144,25 @@ const isConfig = path.includes('/configuration');
     place-items: center;
     width: 2.25rem;
     height: 2.25rem;
-    border-radius: 50%;
+    border-radius: var(--r-sm);
+    border: 1px solid transparent;
     color: var(--muted);
-    transition: color .15s ease, background-color .15s ease, transform .3s var(--ease);
+    transition: color .15s ease, background-color .15s ease, border-color .15s ease, transform .3s var(--ease);
   }
-  .icon-link:hover { color: var(--fg); background: var(--soft); }
-  .icon-link:hover :global(svg) { transform: rotate(30deg); transition: transform .4s var(--ease); }
+  .icon-link:hover { color: var(--fg); background: var(--soft); border-color: var(--line); }
+  .icon-link:hover :global(svg) { transform: rotate(22deg); transition: transform .35s var(--ease); }
   .icon-link[aria-current='page'] {
-    color: var(--fg);
-    background: var(--soft);
-    box-shadow: inset 0 0 0 1px var(--line-strong);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
   }
 
   /* Tablette & Mobile : la navigation passe sur une 2e ligne défilable horizontalement */
   @media (max-width: 52rem) {
+    .brand {
+      padding-right: 0;
+      border-right: none;
+    }
     .header-inner {
       flex-wrap: wrap;
       padding-top: .45rem;

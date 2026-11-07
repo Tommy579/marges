@@ -117,8 +117,8 @@ const isEspace = Astro.url.pathname.includes('/espace');
     <link rel="alternate" type="application/rss+xml" title={`${SITE.title} — flux RSS`} href={new URL('rss.xml', Astro.site)} />
     <link rel="sitemap" href={url('/sitemap-index.xml')} />
 
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#faf6f0" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -185,6 +185,7 @@ const isEspace = Astro.url.pathname.includes('/espace');
         normalizeAmbianceColor,
         fetchUserAmbianceColor,
       } from '../utils/supabase';
+      import { startGlobalReminderWatcher } from '../utils/reminders';
       import { url } from '../utils/url';
 
       async function verifySession() {
@@ -206,6 +207,7 @@ const isEspace = Astro.url.pathname.includes('/espace');
             document.documentElement.classList.add('is-authenticated');
             applyAmbianceToDOM(normalizeAmbianceColor(session.user.user_metadata?.ambiance_color));
             fetchUserAmbianceColor().catch(() => {});
+            startGlobalReminderWatcher();
           }
         } catch (err) {
           if (!isEspace) {
