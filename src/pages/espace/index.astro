@@ -1290,6 +1290,16 @@ const localPresetCourses = getCourses().map((s) => {
           const itemExtMatch = cleanName.match(/\.([a-zA-Z0-9]+)$/);
           if (itemExtMatch) {
             const itemExt = itemExtMatch[1].toLowerCase();
+            // Déterminer le sous-dossier (h3 précédent dans l'aperçu)
+            let detectedFolder = 'Document';
+            let prev: Element | null = li.previousElementSibling;
+            while (prev) {
+              if (prev.tagName === 'H3') {
+                detectedFolder = prev.textContent?.trim() || 'Document';
+                break;
+              }
+              prev = prev.previousElementSibling;
+            }
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'btn btn--sm';
@@ -1302,7 +1312,7 @@ const localPresetCourses = getCourses().map((s) => {
               openPdfViewer({
                 title: cleanName,
                 subject: c.title,
-                folder: 'Document',
+                folder: detectedFolder,
                 rawCourse: c,
               });
             });

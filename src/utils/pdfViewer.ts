@@ -5,7 +5,13 @@ import {
   saveDocumentFile,
   dataUrlToBlob,
 } from './fileStorage';
-import { getCurrentUserCached, type DbCourse } from './supabase';
+import {
+  getCurrentUserCached,
+  getCurrentUser,
+  getUserCoursesImmediate,
+  createUserCourse,
+  type DbCourse,
+} from './supabase';
 
 export interface OpenPdfOptions {
   title: string;
@@ -85,19 +91,44 @@ export function setupPdfViewerModal(): void {
 
 async function handleAttachedDocumentFile(file: File): Promise<void> {
   if (!currentDocContext) return;
-  const user = getCurrentUserCached();
+  const user = getCurrentUserCached() || (await getCurrentUser().catch(() => null));
   const userId = user?.id || '';
   const title = currentDocContext.title;
   const subject = currentDocContext.subject || '';
   const folder = currentDocContext.folder || '';
 
-  // Sauvegarde dans IndexedDB (local immédiat) et téléversement transparent vers Supabase Storage
+  // 1. Sauvegarde dans IndexedDB (local immédiat) et téléversement transparent vers Supabase Storage
   await saveDocumentFile(file, {
     userId,
     subject,
     folder,
     fileName: title,
   });
+
+  // 2. Si le fichier fait moins de 2 Mo et qu'aucun cours individuel ne contient encore sa DataURL,
+  // sauvegarder également une copie base64 dans la table courses pour garantir la synchronisation multi-appareils
+  // même si le bucket Supabase Storage n'est pas configuré.
+  if (file.size <= 2 * 1024 * 1024 && userId) {
+    try {
+      const existing = getUserCoursesImmediate().find(
+        (c) => c.title.trim().toLowerCase() === title.trim().toLowerCase() && c.body_md?.startsWith('data:')
+      );
+      if (!existing) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          if (dataUrl) {
+            createUserCourse({
+              title,
+              tags: [subject || 'Cours', folder || 'Documents'],
+              body_md: dataUrl,
+            }).catch(() => {});
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch {}
+  }
 
   // Réaffichage immédiat
   await openDocumentViewer(currentDocContext);
@@ -207,19 +238,38 @@ export async function openDocumentViewer(options: OpenPdfOptions): Promise<void>
     finalUrl = options.fileUrl;
   }
 
-  // 2. Data URL embarquée dans le cours
-  if (!finalUrl && options.rawCourse?.body_md && options.rawCourse.body_md.startsWith('data:')) {
-    try {
-      finalBlob = dataUrlToBlob(options.rawCourse.body_md);
-      activeBlobUrl = URL.createObjectURL(finalBlob);
-      finalUrl = activeBlobUrl;
-    } catch (e) {
-      console.warn('[DocViewer] Erreur conversion dataUrl:', e);
+  // 2. Data URL embarquée dans le cours (ou dans un cours associé portant le même nom de fichier)
+  if (!finalUrl) {
+    let dataUrlSource =
+      options.rawCourse?.body_md && options.rawCourse.body_md.startsWith('data:')
+        ? options.rawCourse.body_md
+        : null;
+
+    if (!dataUrlSource) {
+      try {
+        const allCourses = getUserCoursesImmediate();
+        const matchingCourse = allCourses.find(
+          (c) => c.title.trim().toLowerCase() === docTitle.toLowerCase() && c.body_md && c.body_md.startsWith('data:')
+        );
+        if (matchingCourse) {
+          dataUrlSource = matchingCourse.body_md;
+        }
+      } catch {}
+    }
+
+    if (dataUrlSource) {
+      try {
+        finalBlob = dataUrlToBlob(dataUrlSource);
+        activeBlobUrl = URL.createObjectURL(finalBlob);
+        finalUrl = activeBlobUrl;
+      } catch (e) {
+        console.warn('[DocViewer] Erreur conversion dataUrl:', e);
+      }
     }
   }
 
   // 3. Recherche locale immédiate dans IndexedDB (0ms hors-ligne)
-  const user = getCurrentUserCached();
+  const user = getCurrentUserCached() || (await getCurrentUser().catch(() => null));
   const userId = user?.id;
 
   if (!finalBlob && !finalUrl) {
@@ -255,17 +305,25 @@ export async function openDocumentViewer(options: OpenPdfOptions): Promise<void>
 
   // 5. Si introuvable mais présent sur le serveur statique (/cours-files/...)
   if (!finalBlob && !finalUrl) {
-    const possibleStatic = `/cours-files/${encodeURI(docSubject)}/${encodeURI(docFolder)}/${encodeURI(docTitle)}`;
-    try {
-      const headCheck = await fetch(possibleStatic, { method: 'HEAD' });
-      if (headCheck.ok) {
-        finalUrl = possibleStatic;
-      }
-    } catch {}
+    const basePath = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+    const candidateStaticUrls = [
+      `${basePath}/cours-files/${encodeURI(docSubject)}/${encodeURI(docFolder)}/${encodeURI(docTitle)}`,
+      `${basePath}/cours-files/${encodeURI(docSubject)}/${encodeURI(docTitle)}`,
+      `/cours-files/${encodeURI(docSubject)}/${encodeURI(docFolder)}/${encodeURI(docTitle)}`,
+    ];
+    for (const staticUrl of Array.from(new Set(candidateStaticUrls))) {
+      try {
+        const headCheck = await fetch(staticUrl, { method: 'HEAD' });
+        if (headCheck.ok) {
+          finalUrl = staticUrl;
+          break;
+        }
+      } catch {}
+    }
   }
 
-  // 6. Contenu textuel direct fourni
-  if (!finalBlob && !finalUrl && options.content && options.content !== docTitle) {
+  // 6. Contenu textuel direct fourni (uniquement pour les fichiers texte / notes, jamais pour un binaire .docx/.pdf)
+  if (!finalBlob && !finalUrl && !isDocx && !isPdf && options.content && options.content !== docTitle) {
     finalBlob = new Blob([options.content], { type: 'text/plain;charset=utf-8' });
     activeBlobUrl = URL.createObjectURL(finalBlob);
     finalUrl = activeBlobUrl;

@@ -7,6 +7,15 @@ export interface ImportFolderResult {
   pdfCount: number;
 }
 
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 /**
  * Traite et enregistre l'arborescence complète d'un dossier sélectionné par l'utilisateur.
  * Sauvegarde les fichiers dans IndexedDB et Supabase Storage, puis crée les matières correspondantes dans Supabase.
@@ -36,9 +45,13 @@ export async function processFolderUpload(
   const topSegments = new Set(paths.map((p) => p[0]));
   const isWrappedInTopFolder = topSegments.size === 1 && paths.some((p) => p.length >= 3);
 
-  paths.forEach((parts, idx) => {
+  const savePromises: Promise<any>[] = [];
+  const embeddedFileCourses: Array<{ title: string; body_md: string; tags: string[] }> = [];
+
+  for (let idx = 0; idx < paths.length; idx++) {
+    const parts = paths[idx];
     let subjectName = '';
-    let category = 'Documents';
+    let category = 'Documents généraux';
     const fileName = parts[parts.length - 1];
     const fileObj = files[idx];
 
@@ -56,19 +69,40 @@ export async function processFolderUpload(
 
     // Sauvegarde unifiée dans IndexedDB locale et téléversement transparent vers Supabase Storage
     if (fileObj) {
-      saveDocumentFile(fileObj, {
-        userId,
-        subject: subjectName,
-        folder: category,
-        fileName,
-      }).catch((e) => console.warn('[courseImport] Erreur sauvegarde document:', fileName, e));
+      savePromises.push(
+        saveDocumentFile(fileObj, {
+          userId,
+          subject: subjectName,
+          folder: category,
+          fileName,
+        }).catch((e) => console.warn('[courseImport] Erreur sauvegarde document:', fileName, e))
+      );
+
+      // Pour les documents Word / Texte / Code légers (<= 1.5 Mo), embarquer aussi la DataURL dans la table courses
+      // afin d'assurer une lecture directe 100% fiable même sans bucket Storage
+      const ext = (fileName.split('.').pop() || '').toLowerCase();
+      if (
+        ['docx', 'doc', 'txt', 'md', 'c', 'h', 'cpp', 'java', 'py', 'sci', 'sce', 'm'].includes(ext) &&
+        fileObj.size <= 1.5 * 1024 * 1024
+      ) {
+        try {
+          const dataUrl = await fileToDataUrl(fileObj);
+          if (dataUrl) {
+            embeddedFileCourses.push({
+              title: fileName,
+              body_md: dataUrl,
+              tags: [subjectName, category, 'Dossier importé'],
+            });
+          }
+        } catch {}
+      }
     }
 
     if (!subjectsMap[subjectName]) {
       subjectsMap[subjectName] = { subfolders: {}, rootFiles: [] };
     }
 
-    if (category === 'Documents') {
+    if (category === 'Documents généraux' || category === 'Documents') {
       subjectsMap[subjectName].rootFiles.push(fileName);
     } else {
       if (!subjectsMap[subjectName].subfolders[category]) {
@@ -76,7 +110,9 @@ export async function processFolderUpload(
       }
       subjectsMap[subjectName].subfolders[category].push(fileName);
     }
-  });
+  }
+
+  await Promise.all(savePromises);
 
   const newCourses: Array<{ title: string; body_md: string; tags: string[] }> = [];
 
@@ -118,7 +154,7 @@ export async function processFolderUpload(
   }
 
   onProgress?.(`Enregistrement de ${newCourses.length} matière(s)...`);
-  await createBatchUserCourses(newCourses);
+  await createBatchUserCourses([...newCourses, ...embeddedFileCourses]);
 
   return {
     subjectCount: newCourses.length,

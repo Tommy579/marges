@@ -28,7 +28,10 @@ const shortcuts = [
   <div class="container container--wide app-page home">
     <!-- En-tête : salutation contextuelle et dateline éditoriale -->
     <header class="home-hero">
-      <h1 class="home-greeting"><span data-greeting>Bonjour</span><span class="accent-dot">.</span></h1>
+      <div class="home-hero-title">
+        <h1 class="home-greeting"><span data-greeting>Bonjour</span><span class="accent-dot">.</span></h1>
+        <p class="home-countdown meta" data-christmas-countdown>&nbsp;</p>
+      </div>
       <p class="home-dateline meta" data-today-date>&nbsp;</p>
     </header>
 
@@ -207,6 +210,22 @@ const shortcuts = [
     if (dateEl) {
       const s = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
       dateEl.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    const countdownEl = document.querySelector('[data-christmas-countdown]');
+    if (countdownEl) {
+      const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      let xmas = new Date(now.getFullYear(), 11, 25);
+      if (todayMid > xmas) {
+        xmas = new Date(now.getFullYear() + 1, 11, 25);
+      }
+      const dodos = Math.round((xmas.getTime() - todayMid.getTime()) / (1000 * 60 * 60 * 24));
+      countdownEl.textContent =
+        dodos === 0
+          ? 'Joyeux Noël ! 🎄'
+          : dodos === 1
+            ? 'Courage, plus qu’un seul petit dodo avant Noël ! 🎄'
+            : `Plus que ${dodos} dodos avant Noël ! 🎄`;
     }
 
     // 0. Auto-synchronisation Supabase Cloud (PC <-> Mobile)
@@ -407,6 +426,10 @@ const shortcuts = [
     font-size: clamp(2.2rem, 1.7rem + 2.4vw, 3.4rem);
     letter-spacing: -.035em;
     margin: 0;
+  }
+  .home-countdown {
+    margin: .2rem 0 0;
+    font-size: .88rem;
   }
   .accent-dot {
     color: var(--accent);

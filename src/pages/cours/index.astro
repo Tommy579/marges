@@ -737,14 +737,17 @@ const subjectsList = subjects.map((s) => ({
             }
             const fList = sData.folders.get(sec.folderName)!;
             sec.items.forEach((item) => {
-              fList.push({
-                id: c.id,
-                title: item.title,
-                url: item.url,
-                ext: item.ext,
-                rawCourse: c,
-                content: item.content,
-              });
+              const existingIdx = fList.findIndex((f) => f.title.toLowerCase() === item.title.toLowerCase());
+              if (existingIdx === -1) {
+                fList.push({
+                  id: c.id,
+                  title: item.title,
+                  url: item.url,
+                  ext: item.ext,
+                  rawCourse: c,
+                  content: item.content,
+                });
+              }
             });
           });
         } else if (!c.tags?.includes('Matière')) {
@@ -762,13 +765,23 @@ const subjectsList = subjects.map((s) => ({
           const extMatch = c.title.match(/\.([a-zA-Z0-9]+)$/);
           if (extMatch) ext = extMatch[1].toLowerCase();
 
-          sData.folders.get(folder)!.push({
+          const fList = sData.folders.get(folder)!;
+          const existingIdx = fList.findIndex((f) => f.title.toLowerCase() === c.title.toLowerCase());
+          const entry = {
             id: c.id,
             title: c.title,
             ext,
             rawCourse: c,
             content: c.body_md,
-          });
+          };
+          if (existingIdx !== -1) {
+            // Préférer l'entrée qui contient la DataURL directe du fichier
+            if (isDataUrl || !fList[existingIdx].rawCourse?.body_md?.startsWith('data:')) {
+              fList[existingIdx] = entry;
+            }
+          } else {
+            fList.push(entry);
+          }
         }
       });
 
@@ -921,6 +934,12 @@ const subjectsList = subjects.map((s) => ({
             li.className = 'file-item file-item-supabase';
 
             const isPdf = file.ext === 'pdf' || file.title.toLowerCase().endsWith('.pdf');
+            const isBinaryDoc =
+              isPdf ||
+              file.ext === 'docx' ||
+              file.ext === 'doc' ||
+              /\.(pdf|docx?|odt|xlsx?|zip|tar|gz|png|jpe?g)$/i.test(file.title) ||
+              Boolean(file.rawCourse?.body_md?.startsWith('data:'));
             const badgeClass = isPdf ? 'file-badge--pdf' : 'file-badge--doc';
             const badgeLabel = (file.ext || (isPdf ? 'pdf' : 'doc')).toUpperCase().slice(0, 4);
 
@@ -931,7 +950,7 @@ const subjectsList = subjects.map((s) => ({
               </div>
               <div class="file-actions meta">
                 <button type="button" class="btn btn--sm btn-consult-db">Consulter</button>
-                ${file.id && !isPdf ? `<a href="${import.meta.env.BASE_URL.replace(/\/$/, '')}/notes/?id=${encodeURIComponent(file.id)}" class="btn btn--sm" title="Ouvrir dans l'éditeur de notes">Éditer</a>` : ''}
+                ${file.id && !isBinaryDoc ? `<a href="${import.meta.env.BASE_URL.replace(/\/$/, '')}/notes/?id=${encodeURIComponent(file.id)}" class="btn btn--sm" title="Ouvrir dans l'éditeur de notes">Éditer</a>` : ''}
                 ${file.id && file.rawCourse ? `<button type="button" class="btn btn--danger btn--sm btn-del-db" title="Supprimer ce document">✕</button>` : ''}
               </div>
             `;

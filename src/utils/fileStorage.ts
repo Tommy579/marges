@@ -62,7 +62,12 @@ export function buildStoragePath(
   if (!userId) return '';
   const cleanSubject = subject && subject !== 'Général' && subject !== 'Cours' ? sanitizeStorageSegment(subject) : '';
   const cleanFolder =
-    folder && folder !== 'Document' && folder !== 'Documents' && folder !== 'Documents racines'
+    folder &&
+    folder !== 'Document' &&
+    folder !== 'Documents' &&
+    folder !== 'Documents généraux' &&
+    folder !== 'Documents racines' &&
+    folder !== 'Fiches & Notes'
       ? sanitizeStorageSegment(folder)
       : '';
   const cleanFile = fileName ? sanitizeStorageSegment(fileName) : '';
@@ -88,7 +93,12 @@ export function getCandidateStoragePaths(
   const cleanFile = sanitizeStorageSegment(fileName);
   const cleanSubject = subject && subject !== 'Général' && subject !== 'Cours' ? sanitizeStorageSegment(subject) : '';
   const cleanFolder =
-    folder && folder !== 'Document' && folder !== 'Documents' && folder !== 'Documents racines'
+    folder &&
+    folder !== 'Document' &&
+    folder !== 'Documents' &&
+    folder !== 'Documents généraux' &&
+    folder !== 'Documents racines' &&
+    folder !== 'Fiches & Notes'
       ? sanitizeStorageSegment(folder)
       : '';
 
@@ -97,6 +107,11 @@ export function getCandidateStoragePaths(
     paths.push(`${userId}/${cleanSubject}/${cleanFolder}/${cleanFile}`);
   }
   if (cleanSubject) {
+    paths.push(`${userId}/${cleanSubject}/Documents_generaux/${cleanFile}`);
+    paths.push(`${userId}/${cleanSubject}/Documents/${cleanFile}`);
+    paths.push(`${userId}/${cleanSubject}/CM/${cleanFile}`);
+    paths.push(`${userId}/${cleanSubject}/TD/${cleanFile}`);
+    paths.push(`${userId}/${cleanSubject}/TP/${cleanFile}`);
     paths.push(`${userId}/${cleanSubject}/${cleanFile}`);
   }
   paths.push(`${userId}/${cleanFile}`);
@@ -365,6 +380,59 @@ export async function getDocumentBlob(key: string): Promise<Blob | null> {
 }
 
 /**
+ * Recherche un fichier dans le bucket Supabase Storage par son nom (insensible à la casse et aux accents)
+ * en parcourant le dossier de la matière ou le dossier racine de l'utilisateur.
+ */
+async function findStoragePathInBucket(
+  userId: string,
+  subject: string,
+  fileName: string
+): Promise<string | null> {
+  if (typeof window === 'undefined' || !userId || !fileName) return null;
+  try {
+    const sb = getSupabase();
+    const targetSanitized = sanitizeStorageSegment(fileName).toLowerCase();
+    const cleanSubject = subject && subject !== 'Général' && subject !== 'Cours' ? sanitizeStorageSegment(subject) : '';
+
+    const foldersToScan = cleanSubject ? [`${userId}/${cleanSubject}`, userId] : [userId];
+
+    for (const prefix of foldersToScan) {
+      const { data: items, error } = await sb.storage.from(COURSE_FILES_BUCKET).list(prefix, { limit: 200 });
+      if (error || !items) continue;
+
+      const subdirs: string[] = [];
+      for (const item of items) {
+        if (!item.name) continue;
+        // Un fichier possède un id ou metadata, un dossier n'a généralement pas d'id
+        const itemSanitized = sanitizeStorageSegment(item.name).toLowerCase();
+        if (item.name.toLowerCase() === fileName.toLowerCase() || itemSanitized === targetSanitized) {
+          return `${prefix}/${item.name}`;
+        }
+        if (!item.id && !item.name.includes('.')) {
+          subdirs.push(`${prefix}/${item.name}`);
+        }
+      }
+
+      // Scanner un niveau de sous-dossiers (ex: CM, TD, Documents_generaux...)
+      for (const sub of subdirs) {
+        const { data: subItems } = await sb.storage.from(COURSE_FILES_BUCKET).list(sub, { limit: 200 });
+        if (!subItems) continue;
+        for (const subItem of subItems) {
+          if (!subItem.name) continue;
+          const subSanitized = sanitizeStorageSegment(subItem.name).toLowerCase();
+          if (subItem.name.toLowerCase() === fileName.toLowerCase() || subSanitized === targetSanitized) {
+            return `${sub}/${subItem.name}`;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[DocStorage] Erreur recherche bucket:', err);
+  }
+  return null;
+}
+
+/**
  * Recherche intelligente d'un document localement dans IndexedDB selon plusieurs variantes de clé.
  */
 export async function findDocumentBlob(
@@ -377,17 +445,21 @@ export async function findDocumentBlob(
   const cleanSubject = subject.trim();
   const cleanFolder = folder.trim();
   const cleanFile = fileName.trim();
+  const sanitizedFile = sanitizeStorageSegment(cleanFile);
 
   const candidateKeys = [
     `doc:${cleanUser}:${cleanSubject}:${cleanFolder}:${cleanFile}`,
     `doc:${cleanUser}:${cleanSubject}:${cleanFile}`,
     `doc:${cleanUser}:${cleanFile}`,
+    `doc::${cleanSubject}:${cleanFolder}:${cleanFile}`,
+    `doc::${cleanFile}`,
     `doc:${cleanSubject}:${cleanFolder}:${cleanFile}`,
     `doc:${cleanSubject}:${cleanFile}`,
     `doc:${cleanFile}`,
     `${cleanSubject}/${cleanFolder}/${cleanFile}`,
     `${cleanSubject}/${cleanFile}`,
     cleanFile,
+    sanitizedFile,
   ];
 
   for (const k of candidateKeys) {
@@ -395,14 +467,35 @@ export async function findDocumentBlob(
     if (blob) return blob;
   }
 
+  // Fallback : parcourir les clés d'IndexedDB pour trouver toute clé se terminant par le nom du fichier
+  try {
+    const entries = await getAllLocalDocumentEntries();
+    const targetLower = cleanFile.toLowerCase();
+    const targetSanitizedLower = sanitizedFile.toLowerCase();
+    for (const entry of entries) {
+      const k = entry.key.toLowerCase();
+      const blobName = ((entry.blob as any)?.name || '').toLowerCase();
+      if (
+        k === targetLower ||
+        k.endsWith(`:${targetLower}`) ||
+        k.endsWith(`/${targetLower}`) ||
+        (targetSanitizedLower && (k.endsWith(`:${targetSanitizedLower}`) || k.endsWith(`/${targetSanitizedLower}`))) ||
+        blobName === targetLower
+      ) {
+        return entry.blob;
+      }
+    }
+  } catch {}
+
   return null;
 }
 
 /**
  * Recherche transparente avec repli Cloud :
  * 1. Vérifie d'abord l'IndexedDB locale (0 ms de latence).
- * 2. Si absent et utilisateur connecté, télécharge automatiquement depuis Supabase Storage.
- * 3. Enregistre le Blob téléchargé dans l'IndexedDB locale pour les prochaines consultations.
+ * 2. Vérifie si un cours local contient déjà une DataURL ou le contenu pour ce fichier.
+ * 3. Si absent et utilisateur connecté, télécharge automatiquement depuis Supabase Storage.
+ * 4. Enregistre le Blob téléchargé dans l'IndexedDB locale pour les prochaines consultations.
  */
 export async function fetchAndCacheDocumentBlob(
   userId: string | undefined,
@@ -414,7 +507,21 @@ export async function fetchAndCacheDocumentBlob(
   const localBlob = await findDocumentBlob(userId, subject, folder, fileName);
   if (localBlob) return localBlob;
 
-  // 2. Si absent mais utilisateur connecté, tentative de téléchargement depuis Supabase Storage
+  // 2. Recherche dans les cours locaux (si un enregistrement individuel contient une data: URL)
+  try {
+    const courses = getUserCoursesImmediate();
+    const targetLower = fileName.trim().toLowerCase();
+    const matchCourse = courses.find(
+      (c) => c.title.trim().toLowerCase() === targetLower && c.body_md && c.body_md.startsWith('data:')
+    );
+    if (matchCourse) {
+      const blob = dataUrlToBlob(matchCourse.body_md);
+      await saveDocumentFile(blob, { userId, subject, folder, fileName });
+      return blob;
+    }
+  } catch {}
+
+  // 3. Si absent mais utilisateur connecté, tentative de téléchargement depuis Supabase Storage
   const activeUser = userId || getCurrentUserCached()?.id;
   if (!activeUser) return null;
 
@@ -423,7 +530,21 @@ export async function fetchAndCacheDocumentBlob(
   for (const path of candidatePaths) {
     const cloudBlob = await downloadDocumentFromSupabaseStorage(path);
     if (cloudBlob) {
-      // Stocke le Blob récupéré dans l'IndexedDB locale sous toutes les clés utiles
+      await saveDocumentFile(cloudBlob, {
+        userId: activeUser,
+        subject,
+        folder,
+        fileName,
+      });
+      return cloudBlob;
+    }
+  }
+
+  // 4. Recherche dynamique par listage du bucket si le chemin exact différait
+  const discoveredPath = await findStoragePathInBucket(activeUser, subject, fileName);
+  if (discoveredPath && !candidatePaths.includes(discoveredPath)) {
+    const cloudBlob = await downloadDocumentFromSupabaseStorage(discoveredPath);
+    if (cloudBlob) {
       await saveDocumentFile(cloudBlob, {
         userId: activeUser,
         subject,
