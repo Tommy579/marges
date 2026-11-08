@@ -911,9 +911,26 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
     display: grid;
     gap: 1.25rem;
   }
+  .config-form,
+  .form-group {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
   .form-group {
     display: grid;
     gap: 0.4rem;
+  }
+  .config-form input:not([type="checkbox"]):not([type="radio"]),
+  .config-form select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .status-box,
+  .status-desc {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .field-label {
     font-family: var(--font-ui);

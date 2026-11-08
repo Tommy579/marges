@@ -7,7 +7,7 @@ import { url } from '../utils/url';
 const path = Astro.url.pathname.replace(/\/$/, '') || '/';
 const links = [
   { href: url('/textes/'), label: 'Textes', active: path.includes('/textes') || path.includes('/themes') },
-  { href: url('/emploi-du-temps/'), label: 'Emploi du temps', active: path.includes('/emploi-du-temps') },
+  { href: url('/emploi-du-temps/'), label: 'Emploi du temps', short: 'Planning', active: path.includes('/emploi-du-temps') },
   { href: url('/cours/'), label: 'Cours', active: path.includes('/cours') },
   { href: url('/notes/'), label: 'Notes', active: path.includes('/notes') },
   { href: url('/rappels/'), label: 'Rappels', active: path.includes('/rappels') },
@@ -25,7 +25,9 @@ const isConfig = path.includes('/configuration');
       <ul role="list">
         {links.map((l) => (
           <li>
-            <a href={l.href} aria-current={l.active ? 'page' : undefined}>{l.label}</a>
+            <a href={l.href} aria-current={l.active ? 'page' : undefined}>
+              {l.short ? (<><span class="label-long">{l.label}</span><span class="label-short">{l.short}</span></>) : l.label}
+            </a>
           </li>
         ))}
       </ul>
@@ -193,6 +195,19 @@ const isConfig = path.includes('/configuration');
       font-size: .86rem;
     }
     .nav::-webkit-scrollbar { display: none; }
+    .icon-link { width: 2.5rem; height: 2.5rem; }
+  }
+
+  .label-short { display: none; }
+
+  /* Téléphone : libellé court et liens répartis sur toute la largeur, sans défilement caché */
+  @media (max-width: 30rem) {
+    .label-long { display: none; }
+    .label-short { display: inline; }
+    .nav ul { justify-content: space-between; gap: 0; }
+    .nav li { flex: 1 1 auto; }
+    .nav a { padding: .5rem .4rem; text-align: center; }
+    .nav a::after { left: .4rem; right: .4rem; }
   }
 
   @media print { .site-header { position: static; } }

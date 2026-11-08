@@ -52,7 +52,7 @@
 
 @media (max-width: 52rem) {
   :root {
-    --header-h: 5.6rem;
+    --header-h: 6rem;
   }
 }
 
@@ -654,6 +654,10 @@ code, kbd {
   font-family: var(--font-ui);
   font-size: .92rem;
   cursor: pointer;
+}
+.switch-row > span {
+  min-width: 0;
+  flex: 1;
 }
 .switch-row small { display: block; color: var(--muted); font-size: .8rem; margin-top: .1rem; }
 .switch {

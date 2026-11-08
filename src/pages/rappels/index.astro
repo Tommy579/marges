@@ -52,7 +52,7 @@ const serializedCourses = subjects.map((s) => ({
     <!-- Statut des notifications Web -->
     <div class="panel permission-banner" data-permission-banner>
       <div class="banner-content">
-        <strong id="perm-title">Statut du système d'alerte :</strong>
+        <strong id="perm-title">Statut du système d'alerte :</strong>{' '}
         <span id="perm-status" class="meta">Vérification...</span>
       </div>
       <button type="button" class="btn btn--primary btn--sm" id="btn-request-perm">
@@ -70,7 +70,7 @@ const serializedCourses = subjects.map((s) => ({
               <span class="dot-status" id="schedule-dot"></span>
               <h2 class="label" id="schedule-state-title">Programme de rappels actif</h2>
             </div>
-            <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <div class="schedule-header-actions">
               <button type="button" class="btn btn--sm" id="btn-toggle-adjust-reminders">Modifier mes réglages</button>
               <a href={url('/configuration/')} class="more">Paramètres avancés <span aria-hidden="true">→</span></a>
             </div>
@@ -697,7 +697,16 @@ const serializedCourses = subjects.map((s) => ({
     padding-bottom: 0.85rem;
     margin-bottom: 1.25rem;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 0.75rem;
+  }
+  .schedule-header-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .more {
+    white-space: nowrap;
   }
   .status-indicator {
     display: flex;

@@ -263,7 +263,7 @@ import { url } from '../../utils/url';
             </div>
           </div>
 
-          <div class="form-row-2">
+          <div class="form-row-2 form-row-time">
             <div class="form-field">
               <label for="new-ev-start">Heure de début <span class="required">*</span></label>
               <input type="time" id="new-ev-start" name="start" value="09:00" required />
@@ -285,7 +285,7 @@ import { url } from '../../utils/url';
             <input type="text" id="new-ev-notes" name="notes" placeholder="Ex : Groupe 2, apporter calculatrice..." />
           </div>
 
-          <div class="cal-dialog-actions" style="margin-top: 1.5rem;">
+          <div class="cal-dialog-actions">
             <button type="button" class="btn btn--sm" id="btn-cancel-add-event">Annuler</button>
             <button type="submit" class="btn btn--primary btn--sm" id="btn-submit-add-event">
               Enregistrer le créneau
@@ -1801,6 +1801,11 @@ import { url } from '../../utils/url';
      VUE 1 : GRILLE SEMAINE (LARGES COLONNES & RESPONSIVE)
      ============================================================== */
 
+  /* Garantit que l'attribut [hidden] masque la vue même avec display: flex */
+  .timetable-view[hidden] {
+    display: none !important;
+  }
+
   .view-week {
     width: 100%;
     overflow-x: auto;
@@ -2674,13 +2679,16 @@ import { url } from '../../utils/url';
 
   .form-field input,
   .form-field select {
-    padding: 0.5rem 0.75rem;
+    padding: 0.55rem 0.75rem;
     border: 1px solid var(--line-strong);
     border-radius: var(--r-sm);
     background: var(--surface);
     color: var(--fg);
     font-family: var(--font-ui);
-    font-size: 0.9rem;
+    font-size: max(16px, 0.9rem);
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
     outline: none;
     transition: border-color 0.15s ease;
   }
@@ -2796,8 +2804,20 @@ import { url } from '../../utils/url';
       width: 100%;
     }
 
+    .timetable-hero-actions {
+      flex-wrap: nowrap;
+    }
+
     .timetable-hero-actions .btn {
-      flex: 1 1 auto;
+      flex: 1 1 0;
+      min-width: 0;
+      padding-inline: 0.6rem;
+    }
+
+    /* Bouton réglages (icône seule) : carré, à côté des deux autres */
+    .timetable-hero-actions a.btn {
+      flex: 0 0 2.5rem;
+      padding: 0;
     }
 
     .nav-date-group {
@@ -2878,19 +2898,34 @@ import { url } from '../../utils/url';
       padding: 1rem;
     }
 
-    .form-row-2 {
-      grid-template-columns: 1fr;
+    .cal-dialog-title {
+      font-size: 1.2rem;
+      margin-bottom: 0.85rem;
+    }
+
+    .dialog-form {
       gap: 0.65rem;
     }
 
+    .form-row-2 {
+      grid-template-columns: 1fr;
+      gap: 0.6rem;
+    }
+
+    .form-row-2.form-row-time {
+      grid-template-columns: 1fr 1fr;
+    }
+
     .cal-dialog-actions {
-      flex-direction: column;
-      align-items: stretch;
+      flex-direction: row;
+      align-items: center;
       gap: 0.5rem;
+      margin-top: 0.35rem;
     }
 
     .cal-dialog-actions .btn {
-      width: 100%;
+      flex: 1;
+      min-width: 0;
     }
   }
 </style>

@@ -2072,11 +2072,15 @@ const localPresetCourses = getCourses().map((s) => {
 
   .espace-form {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 1.25rem;
+    min-width: 0;
   }
   .form-group {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.4rem;
+    min-width: 0;
   }
   .field-label {
     font-family: var(--font-ui);
@@ -2086,6 +2090,7 @@ const localPresetCourses = getCourses().map((s) => {
   .espace-form input[type="text"],
   .espace-form input[type="email"],
   .espace-form input[type="password"],
+  .espace-form input[type="url"],
   .espace-form input[type="time"],
   .espace-form select,
   .espace-form textarea {
@@ -2096,6 +2101,9 @@ const localPresetCourses = getCourses().map((s) => {
     color: var(--fg);
     font-family: inherit;
     font-size: max(16px, 0.92rem);
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     transition: border-color .15s ease;
   }
   .espace-form textarea {

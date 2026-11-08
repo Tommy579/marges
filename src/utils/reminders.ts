@@ -550,7 +550,6 @@ export async function checkDueRemindersNow(): Promise<void> {
 
   const now = new Date();
   const todayKey = getLocalDateKey(now);
-  const currentHHMM = formatDeterministicHHMM(now);
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const isoDay = now.getDay() === 0 ? 7 : now.getDay();
   const firedSlots = loadFiredSlotsForDay(todayKey);
@@ -613,8 +612,8 @@ export async function checkDueRemindersNow(): Promise<void> {
     if (isSlotDue(slotTime, slotId)) {
       markSlotFiredForDay(todayKey, slotId);
       const isCours = rem.kind === 'cours';
-      const targetUrl = rem.target_path
-        ? (rem.target_path.startsWith('http') ? rem.target_path : `${base}/${rem.target_path.replace(/^\/+/, '')}`)
+      const targetUrl = rem.target_slug
+        ? (rem.target_slug.startsWith('http') ? rem.target_slug : `${base}/${rem.target_slug.replace(/^\/+/, '')}`)
         : (isCours ? `${base}/cours/` : `${base}/textes/`);
       await sendCrossPlatformNotification({
         title: rem.label || (isCours ? 'Rappel de cours' : 'Rappel de lecture'),

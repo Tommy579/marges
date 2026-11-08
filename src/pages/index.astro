@@ -596,12 +596,9 @@ const shortcuts = [
     .shortcut { border-bottom: 1px solid var(--line); }
     .shortcut:nth-child(2n) { border-right: none; }
     .shortcut:last-child { grid-column: 1 / -1; border-bottom: none; border-right: none; }
+    .shortcut-text small { white-space: normal; }
   }
   @media (max-width: 36rem) {
-    .shortcuts { grid-template-columns: 1fr; }
-    .shortcut { border-right: none; border-bottom: 1px solid var(--line); }
-    .shortcut:last-child { border-bottom: none; }
-    .shortcut-text small { white-space: normal; }
     .today-head { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
     .timeline :global(.tl-item) {
       grid-template-columns: 3.25rem minmax(0, 1fr);
