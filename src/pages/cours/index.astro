@@ -907,6 +907,9 @@ const subjectsList = subjects.map((s) => ({
                 fileUrl: file.url,
                 rawCourse: file.rawCourse,
                 content: file.content,
+                // Sans cette extension, une note sans suffixe passait pour un .doc
+                // et le lecteur réclamait un fichier au lieu d'afficher le texte.
+                ext: file.ext,
               });
             };
 

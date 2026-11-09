@@ -14,6 +14,7 @@ import {
 } from './supabase';
 import { renderNotionMarkdown } from './notes';
 import { esc } from './escape';
+import { detectDocumentKind } from './documentKind';
 
 export interface OpenPdfOptions {
   title: string;
@@ -22,6 +23,12 @@ export interface OpenPdfOptions {
   fileUrl?: string;
   rawCourse?: DbCourse;
   content?: string;
+  /**
+   * Extension réelle du document quand l'appelant la connaît déjà (par exemple
+   * « note » pour une fiche Markdown saisie dans l'application). Sans elle, le
+   * lecteur la déduit du titre, ce qui échoue sur les documents sans extension.
+   */
+  ext?: string;
 }
 
 export type OpenDocumentOptions = OpenPdfOptions;
@@ -174,15 +181,19 @@ export async function openDocumentViewer(options: OpenPdfOptions): Promise<void>
   const docFolder = options.folder || 'Document';
 
   // Détection de l'extension et de la catégorie
-  const extMatch = docTitle.match(/\.([a-zA-Z0-9]+)$/);
-  const ext = (extMatch ? extMatch[1] : (options.fileUrl?.split('.').pop() || 'doc')).toLowerCase();
-  const isPdf = ext === 'pdf';
-  const isDocx = ext === 'docx' || ext === 'doc';
-  const isMd = ext === 'md';
-  const isText = [
-    'txt', 'text', 'md', 'c', 'h', 'cpp', 'java', 'py', 'js', 'ts', 'sh',
-    'sci', 'sce', 'm', 'json', 'csv', 'log', 'xml', 'sql', 'html', 'css', 'note'
-  ].includes(ext) || (!isPdf && !isDocx && Boolean(options.content));
+  const { ext, kind } = detectDocumentKind({
+    ext: options.ext,
+    title: docTitle,
+    fileUrl: options.fileUrl,
+    content: options.content,
+  });
+  const isPdf = kind === 'pdf';
+  const isDocx = kind === 'docx';
+  const isMd = kind === 'markdown';
+  const isText = kind === 'markdown' || kind === 'code';
+  // Un contenu texte déjà en mémoire (note, fiche) ne doit jamais être cherché
+  // sur le serveur statique : c'est ce détour qui menait à « fichier introuvable ».
+  const preferInMemoryContent = Boolean(options.content) && (isMd || isText);
 
   if (titleEl) titleEl.textContent = docTitle;
   if (breadcrumbEl) breadcrumbEl.textContent = `${docSubject} / ${docFolder}`;
@@ -255,11 +266,20 @@ export async function openDocumentViewer(options: OpenPdfOptions): Promise<void>
     }
   }
 
-  // 3. Recherche locale immédiate dans IndexedDB (0ms hors-ligne)
-  const user = getCurrentUserCached() || (await getCurrentUser().catch(() => null));
-  const userId = user?.id;
+  // 2 bis. Contenu texte déjà disponible dans l'application (notes, fiches) :
+  // on l'affiche directement, sans interroger IndexedDB, Supabase Storage ni le
+  // serveur statique. C'est ce détour qui produisait « fichier introuvable ».
+  if (!finalBlob && !finalUrl && preferInMemoryContent && options.content) {
+    finalBlob = new Blob([options.content], { type: 'text/plain;charset=utf-8' });
+    activeBlobUrl = URL.createObjectURL(finalBlob);
+    finalUrl = activeBlobUrl;
+  }
 
+  // 3. Recherche locale immédiate dans IndexedDB (0ms hors-ligne)
+  let userId: string | undefined;
   if (!finalBlob && !finalUrl) {
+    const user = getCurrentUserCached() || (await getCurrentUser().catch(() => null));
+    userId = user?.id;
     const localBlob = await findDocumentBlob(userId, docSubject, docFolder, docTitle);
     if (localBlob) {
       finalBlob = localBlob;
