@@ -468,6 +468,27 @@ export async function openDocumentViewer(options: OpenPdfOptions): Promise<void>
         }
       };
     }
+  } else if (isMd || isText) {
+    // Note ou fiche sans contenu enregistré : on l'affiche vide avec une explication.
+    // Demander de « glisser-déposer le fichier » n'a aucun sens pour une note.
+    if (textWrapper) textWrapper.style.display = 'flex';
+    if (textInfo) textInfo.textContent = ext ? ext.toUpperCase() : 'NOTE';
+
+    if (isMd && mdContent) {
+      mdContent.style.display = 'block';
+      if (codePre) codePre.style.display = 'none';
+      mdContent.innerHTML =
+        '<p class="notion-empty-placeholder">Cette note ne contient encore aucun texte. Ouvrez-la dans l’éditeur de notes pour la rédiger.</p>';
+    } else {
+      if (mdContent) mdContent.style.display = 'none';
+      if (codePre && codeContent) {
+        codePre.style.display = 'block';
+        codeContent.textContent = '';
+      }
+    }
+
+    if (btnNewTab) btnNewTab.style.display = 'none';
+    if (btnDownload) btnDownload.style.display = 'none';
   } else {
     // Document non trouvé en cache local
     if (missingZone) missingZone.style.display = 'flex';

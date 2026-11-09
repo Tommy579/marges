@@ -107,6 +107,29 @@ const IGNORED_SUBJECT_TAGS = new Set([
   'Documents racines',
 ]);
 
+/**
+ * Extensions de vrais fichiers. Sert à décider si un markdown est une arborescence
+ * (`### CM` + `- cours1.pdf`) ou simplement une note qui contient des puces.
+ */
+const FILE_EXTS = new Set([
+  'pdf', 'doc', 'docx', 'odt', 'rtf', 'txt', 'md', 'mdx',
+  'c', 'h', 'cpp', 'java', 'py', 'js', 'ts', 'sh', 'm', 'sci', 'sce',
+  'json', 'csv', 'log', 'xml', 'sql', 'html', 'css', 'zip', 'xlsx', 'xls',
+]);
+
+/**
+ * Une ligne de cours n'est un conteneur d'arborescence que si c'en est vraiment un.
+ * Sans ce garde-fou, une note contenant des puces (« - la notion de contrat ») était
+ * éclatée en faux documents et disparaissait de la liste.
+ */
+export function isArborescenceContainer(course: DbCourse, sections = parseMarkdownSections(course.body_md || '')): boolean {
+  if (sections.length === 0) return false;
+  const tags = course.tags || [];
+  if (tags.includes('Dossier importé') || tags.includes('Matière')) return true;
+  if (/^##\s+Arborescence/i.test(course.body_md || '')) return true;
+  return sections.some((section) => section.items.some((item) => FILE_EXTS.has(item.ext)));
+}
+
 /** Une note sans matière réelle est rangée à la racine, sous « Notes ». */
 export function isRootNote(tags?: string[]): boolean {
   if (!tags || !tags.includes('note')) return false;
@@ -170,7 +193,7 @@ export function groupCoursesBySubject(courses: DbCourse[]): Map<string, CourseSu
     }
 
     const sections = parseMarkdownSections(course.body_md);
-    if (sections.length > 0) {
+    if (isArborescenceContainer(course, sections)) {
       sections.forEach((section) => {
         if (!sData.folders.has(section.folderName)) {
           sData.folders.set(section.folderName, []);

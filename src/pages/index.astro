@@ -92,7 +92,6 @@ const shortcuts = [
             {subjects.map((sub) => (
               <li>
                 <a href={url(`/cours/#folder-${sub.id}`)} class="subject-row">
-                  <span class="subject-initial" aria-hidden="true">{sub.name.charAt(0).toUpperCase()}</span>
                   <span class="subject-text">
                     <strong>{sub.name}</strong>
                     <small>{sub.stats.totalFiles} fichiers · {sub.stats.pdfCount} PDF</small>
@@ -130,6 +129,7 @@ const shortcuts = [
   import { STORAGE_KEYS, loadPersistent } from '../utils/persistence';
   import { getCurrentSession, fetchUserScheduleEvents, fetchUserCourses, getUserCoursesImmediate } from '../utils/supabase';
   import { syncTimetableState, parseIcsEvents } from '../utils/timetable';
+  import { esc } from '../utils/escape';
 
   interface HomeEvent {
     title: string;
@@ -371,9 +371,8 @@ const shortcuts = [
           const li = document.createElement('li');
           li.innerHTML = `
             <a href="${targetHref}" class="subject-row">
-              <span class="subject-initial" aria-hidden="true">${subName.charAt(0).toUpperCase()}</span>
               <span class="subject-text">
-                <strong>${subName}</strong>
+                <strong>${esc(subName)}</strong>
                 <small>${countLabel}</small>
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="subject-arrow"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -563,9 +562,11 @@ const shortcuts = [
   .text-list > li { border-top: 1px solid var(--line); }
   .text-list > li:last-child { border-bottom: 1px solid var(--line); }
 
-  /* Matières */
-  .subject-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
-  .subject-row {
+  /* Matières — règles globales : les lignes ajoutées en JavaScript n'ont pas
+     l'attribut de portée d'Astro, donc un style scopé ne s'y appliquait pas
+     (la ligne restait en display:inline, la flèche passait à la ligne). */
+  :global(.subject-list) { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
+  :global(.subject-row) {
     display: flex;
     align-items: center;
     gap: .75rem;
@@ -575,24 +576,12 @@ const shortcuts = [
     text-decoration: none;
     transition: background-color .15s ease;
   }
-  .subject-row:hover { background: var(--soft); text-decoration: none; }
-  .subject-initial {
-    display: grid;
-    place-items: center;
-    width: 2.1rem;
-    height: 2.1rem;
-    flex: none;
-    border-radius: var(--r-sm);
-    background: var(--fg);
-    color: var(--bg);
-    font-weight: 700;
-    font-size: .85rem;
-  }
-  .subject-text { display: grid; flex: 1; min-width: 0; }
-  .subject-text strong { font-size: .92rem; font-weight: 600; }
-  .subject-text small { font-size: .78rem; color: var(--muted); }
-  .subject-row :global(.subject-arrow) { color: var(--muted); opacity: 0; transform: translateX(-4px); transition: all .2s var(--ease); }
-  .subject-row:hover :global(.subject-arrow) { opacity: 1; transform: none; }
+  :global(.subject-row:hover) { background: var(--soft); text-decoration: none; }
+  :global(.subject-text) { display: grid; flex: 1; min-width: 0; }
+  :global(.subject-text strong) { font-size: .92rem; font-weight: 600; }
+  :global(.subject-text small) { font-size: .78rem; color: var(--muted); }
+  :global(.subject-row .subject-arrow) { flex: none; color: var(--muted); opacity: 0; transform: translateX(-4px); transition: all .2s var(--ease); }
+  :global(.subject-row:hover .subject-arrow) { opacity: 1; transform: none; }
 
   /* Thèmes */
   .theme-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .4rem; }
