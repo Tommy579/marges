@@ -553,13 +553,11 @@ const localPresetCourses = getCourses().map((s) => {
     formatSupabaseError,
     loginWithPassword,
     logoutUser,
-    getCurrentUser,
     getCurrentSession,
     updatePassword,
     updateUserProfile,
     fetchUserCourses,
     getUserCoursesImmediate,
-    getLocalUserCourses,
     createUserCourse,
     createBatchUserCourses,
     deleteUserCourse,
@@ -582,28 +580,8 @@ const localPresetCourses = getCourses().map((s) => {
   import { setupPdfViewerModal, openPdfViewer } from '../../utils/pdfViewer';
   import { processFolderUpload } from '../../utils/courseImport';
   import { toast } from '../../utils/toast';
-
-  // Parser Markdown ultra-léger et sécurisé
-  function renderMarkdown(md: string): string {
-    if (!md) return '<p class="meta">Aucun contenu.</p>';
-    const escaped = md
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-    return escaped
-      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-      .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">$1</a>')
-      .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-      .replace(/`([^`]+)`/gim, '<code>$1</code>')
-      .replace(/^\- (.*$)/gim, '<li>$1</li>')
-      .replace(/\n\n+/g, '</p><p>')
-      .replace(/\n/g, '<br />');
-  }
+  import { renderNotionMarkdown as renderMarkdown } from '../../utils/notes';
+  import { esc } from '../../utils/escape';
 
   const DAY_NAMES = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
@@ -782,7 +760,6 @@ const localPresetCourses = getCourses().map((s) => {
             const fullName = session.user.user_metadata?.full_name;
             userDisplayEmail.textContent = fullName ? `${fullName} (${session.user.email})` : (session.user.email || 'Connecté');
           }
-          const profileInput = document.getElementById('profile-full-name') as HTMLInputElement | null;
           // Purge de sécurité : si l'ancien profil contient un gros fichier ICS dans les métadonnées auth, on le nettoie une seule fois
           if (session.user.user_metadata?.timetable_ics) {
             session.user.user_metadata.timetable_ics = null;
@@ -958,21 +935,21 @@ const localPresetCourses = getCourses().map((s) => {
         const card = document.createElement('div');
         const isSelected = c.id ? selectedCourseIds.has(c.id) : false;
         card.className = `panel course-card${isSelected ? ' course-card--selected' : ''}`;
-        const tags = c.tags && c.tags.length ? c.tags.map((t) => `<span class="tag-pill">${t}</span>`).join(' ') : '';
+        const tags = c.tags && c.tags.length ? c.tags.map((t) => `<span class="tag-pill">${esc(t)}</span>`).join(' ') : '';
         const dateStr = c.updated_at ? new Date(c.updated_at).toLocaleDateString('fr-FR') : '';
 
         card.innerHTML = `
           <div class="card-top">
             <div style="display: flex; align-items: flex-start; gap: 0.6rem; min-width: 0;">
-              <input type="checkbox" class="chk-select-course" data-id="${c.id || ''}" title="Sélectionner ce cours" style="margin-top: 0.25rem; cursor: pointer; width: 16px; height: 16px; flex-shrink: 0;" ${isSelected ? 'checked' : ''} />
-              <h3 class="course-card-title">${c.title}</h3>
+              <input type="checkbox" class="chk-select-course" data-id="${esc(c.id || '')}" title="Sélectionner ce cours" style="margin-top: 0.25rem; cursor: pointer; width: 16px; height: 16px; flex-shrink: 0;" ${isSelected ? 'checked' : ''} />
+              <h3 class="course-card-title">${esc(c.title)}</h3>
             </div>
             <span class="meta" style="flex-shrink: 0;">${dateStr}</span>
           </div>
           <div class="tags-row">${tags}</div>
           <div class="card-bottom">
-            <button type="button" class="btn btn--sm btn-read-course" data-id="${c.id}">Lire</button>
-            <button type="button" class="btn btn--danger btn--sm btn-del-course" data-id="${c.id}">Supprimer</button>
+            <button type="button" class="btn btn--sm btn-read-course" data-id="${esc(c.id)}">Lire</button>
+            <button type="button" class="btn btn--danger btn--sm btn-del-course" data-id="${esc(c.id)}">Supprimer</button>
           </div>
         `;
 
@@ -1370,7 +1347,7 @@ const localPresetCourses = getCourses().map((s) => {
       } catch (err: any) {
         if (scheduleLoading) {
           scheduleLoading.style.display = 'block';
-          scheduleLoading.innerHTML = `<span style="color: var(--color-danger, #dc2626);">${formatSupabaseError(err)}</span>`;
+          scheduleLoading.innerHTML = `<span style="color: var(--color-danger, #dc2626);">${esc(formatSupabaseError(err))}</span>`;
         }
       } finally {
         if (scheduleLoading) scheduleLoading.style.display = 'none';
@@ -1561,19 +1538,19 @@ const localPresetCourses = getCourses().map((s) => {
         events.forEach((evt) => {
           const item = document.createElement('div');
           item.className = 'schedule-event-item';
-          const loc = evt.location ? `<span class="event-loc">${evt.location}</span>` : '';
-          const notes = evt.notes ? `<p class="event-notes meta">${evt.notes}</p>` : '';
-          const tag = evt.category ? `<span class="tag-pill tag-kind" style="font-size: 0.65rem; padding: 0.1rem 0.4rem;">${evt.category.toUpperCase()}</span>` : '';
+          const loc = evt.location ? `<span class="event-loc">${esc(evt.location)}</span>` : '';
+          const notes = evt.notes ? `<p class="event-notes meta">${esc(evt.notes)}</p>` : '';
+          const tag = evt.category ? `<span class="tag-pill tag-kind" style="font-size: 0.65rem; padding: 0.1rem 0.4rem;">${esc(evt.category.toUpperCase())}</span>` : '';
 
           item.innerHTML = `
             <div class="event-top">
-              <span class="event-time">${evt.startTime} – ${evt.endTime}</span>
+              <span class="event-time">${esc(evt.startTime)} – ${esc(evt.endTime)}</span>
               ${evt.isCustom
-                ? `<button type="button" class="btn-del-event" data-id="${evt.dbId}" title="Supprimer ce créneau">✕</button>`
+                ? `<button type="button" class="btn-del-event" data-id="${esc(evt.dbId)}" title="Supprimer ce créneau">✕</button>`
                 : tag
               }
             </div>
-            <strong class="event-title">${evt.title}</strong>
+            <strong class="event-title">${esc(evt.title)}</strong>
             ${loc}
             ${notes}
           `;
@@ -1663,7 +1640,7 @@ const localPresetCourses = getCourses().map((s) => {
       } catch (err: any) {
         if (remindersLoading) {
           remindersLoading.style.display = 'block';
-          remindersLoading.innerHTML = `<span style="color: var(--danger);">${formatSupabaseError(err)}</span>`;
+          remindersLoading.innerHTML = `<span style="color: var(--danger);">${esc(formatSupabaseError(err))}</span>`;
         }
       } finally {
         if (remindersLoading && (cachedReminders.length > 0 || (remindersEmpty && remindersEmpty.style.display === 'block'))) {
@@ -1688,8 +1665,8 @@ const localPresetCourses = getCourses().map((s) => {
 
         item.innerHTML = `
           <div class="reminder-left">
-            <span class="tag-pill tag-kind">${r.kind}</span>
-            <strong class="reminder-label">${r.label || 'Rappel'}</strong>
+            <span class="tag-pill tag-kind">${esc(r.kind)}</span>
+            <strong class="reminder-label">${esc(r.label || 'Rappel')}</strong>
             <span class="reminder-time-tag">${timeFormatted}</span>
           </div>
           <div class="reminder-actions">

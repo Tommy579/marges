@@ -160,6 +160,12 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
               id="ics-url"
               placeholder="https://ent.universite.fr/agenda/export.ics"
             />
+            <span class="help-text">
+              ⚠ Attention : un lien de synchronisation contient souvent un jeton personnel qui donne accès à votre
+              emploi du temps. Comme le site est statique, la récupération passe par des relais publics (allorigins,
+              codetabs) qui voient cette adresse. Si vous préférez éviter cela, utilisez plutôt le fichier .ics
+              ci-dessus : il reste sur votre appareil.
+            </span>
           </div>
 
           <div class="status-box" id="timetable-status-box">

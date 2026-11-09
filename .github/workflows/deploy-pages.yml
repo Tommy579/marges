@@ -79,6 +79,19 @@ jobs:
           node scripts/generate-article.mjs "$INPUT_THEME" "$INPUT_FORMAT" "$INPUT_SUBJECT"
 
       # -------------------------------------------------------------
+      # ÉTAPE : Build AVANT tout commit
+      # Un article dont le frontmatter ne respecte pas le schéma de
+      # src/content.config.ts fait échouer le build. En commitant d'abord,
+      # on poussait un fichier invalide qui cassait ensuite tous les
+      # déploiements, y compris ceux sans génération.
+      # -------------------------------------------------------------
+      - name: 🏗️ Build de validation (avant commit)
+        env:
+          PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: npm run build
+
+      # -------------------------------------------------------------
       # ÉTAPE : Commit et push du nouveau texte sur la branche active
       # -------------------------------------------------------------
       - name: 📝 Commit et Push du texte généré
@@ -116,19 +129,15 @@ jobs:
             echo "Secrets SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY non configurés (étape ignorée)."
           fi
 
-      # -------------------------------------------------------------
-      # ÉTAPE : Build du site statique Astro et indexation Pagefind
-      # -------------------------------------------------------------
-      - name: 🏗️ Build du site Astro & index Pagefind
-        env:
-          PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-        run: npm run build
+      # Le build a déjà été exécuté plus haut (« Build de validation ») :
+      # on réutilise ./dist pour l'artefact Pages.
 
       - name: ⚙️ Configuration de GitHub Pages
+        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
         uses: actions/configure-pages@v5
 
       - name: 📦 Téléversement de l'artefact Pages
+        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
@@ -139,6 +148,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     needs: generate_and_build
+    # Seule la branche main (et le cron) publie : un push sur dev ne doit pas
+    # remplacer le site en production.
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
     runs-on: ubuntu-latest
     steps:
       - name: 🚀 Déploiement vers GitHub Pages

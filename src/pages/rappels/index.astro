@@ -236,9 +236,9 @@ const serializedCourses = subjects.map((s) => ({
     toggleUserReminder,
     deleteUserReminder,
     getUserCoursesImmediate,
-    type DbReminder,
   } from '../../utils/supabase';
   import { toast } from '../../utils/toast';
+  import { esc } from '../../utils/escape';
 
   interface SuggestionItem {
     type: 'philo' | 'cours';
@@ -427,8 +427,8 @@ const serializedCourses = subjects.map((s) => ({
 
           row.innerHTML = `
             <div style="display: flex; align-items: center; gap: 0.65rem; min-width: 0;">
-              <span class="badge" style="font-size: 0.72rem; text-transform: uppercase;">${r.kind}</span>
-              <strong style="font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${r.label || 'Rappel'}</strong>
+              <span class="badge" style="font-size: 0.72rem; text-transform: uppercase;">${esc(r.kind)}</span>
+              <strong style="font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${esc(r.label || 'Rappel')}</strong>
               <span class="meta" style="font-size: 0.82rem;">${timeShort}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -556,9 +556,9 @@ const serializedCourses = subjects.map((s) => ({
               <span class="history-badge ${isPhilo ? 'badge-philo' : 'badge-cours'}">
                 ${isPhilo ? 'Philo' : 'Cours'}
               </span>
-              <a href="${item.url}" class="history-link">${item.title}</a>
+              <a href="${esc(item.url)}" class="history-link">${esc(item.title)}</a>
             </div>
-            <a href="${item.url}" class="meta config-shortcut">Consulter →</a>
+            <a href="${esc(item.url)}" class="meta config-shortcut">Consulter →</a>
           </li>
         `;
         })

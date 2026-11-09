@@ -304,9 +304,11 @@ import { url } from '../../utils/url';
     fetchUserScheduleEvents,
     createUserScheduleEvent,
     deleteUserScheduleEvent,
+    getUserCoursesImmediate,
   } from '../../utils/supabase';
   import { toast } from '../../utils/toast';
   import { url } from '../../utils/url';
+  import { esc } from '../../utils/escape';
 
   interface CalendarEvent {
     id: string;
@@ -418,6 +420,31 @@ import { url } from '../../utils/url';
 
   function getSubjectUrl(slug: string): string {
     const basePath = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+    if (!slug) return `${basePath}/cours/`;
+
+    // 1. Rechercher une correspondance dynamique parmi les matières synchronisées de l'utilisateur
+    try {
+      const userCourses = getUserCoursesImmediate();
+      const subjectSlugs = new Set<string>();
+      for (const c of userCourses) {
+        const subName = (Array.isArray(c.tags) && c.tags[0] ? c.tags[0] : '').trim();
+        if (!subName) continue;
+        const sSlug = subName
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
+        if (sSlug) subjectSlugs.add(sSlug);
+      }
+      for (const candidate of subjectSlugs) {
+        if (candidate === slug || slug.includes(candidate) || candidate.includes(slug)) {
+          return `${basePath}/cours/#folder-${candidate}`;
+        }
+      }
+    } catch {}
+
+    // 2. Repli sur les matières connues ou le slug direct
     if (slug.includes('analyse')) return `${basePath}/cours/#folder-analyse-numerique`;
     if (slug.includes('algebre') || slug.includes('matlab') || slug.includes('scilab'))
       return `${basePath}/cours/#folder-algebre-lineaire-numerique-scilab`;
@@ -427,7 +454,7 @@ import { url } from '../../utils/url';
       return `${basePath}/cours/#folder-informatique-theorique`;
     if (slug.includes('maths') || slug.includes('ingenieur'))
       return `${basePath}/cours/#folder-maths-de-l-ingenieur`;
-    return `${basePath}/cours/`;
+    return `${basePath}/cours/#folder-${slug}`;
   }
 
   // -------------------------------------------------------------
@@ -803,24 +830,24 @@ import { url } from '../../utils/url';
           <article
             class="cal-course-card ${kindClass} ${isTight ? 'is-tight' : ''} ${isShort ? 'is-short' : ''}"
             style="top: ${topPercent}%; height: ${heightPercent}%; left: calc(${leftPercent}% + 3px); width: calc(${widthPercent}% - 6px);"
-            data-event-id="${ev.id}"
+            data-event-id="${esc(ev.id)}"
             tabindex="0"
             role="button"
-            aria-label="${info.kind} ${info.cleanTitle}, de ${formatTime(ev.start)} à ${formatTime(ev.end)}${ev.location ? ', ' + ev.location : ''}"
+            aria-label="${info.kind} ${esc(info.cleanTitle)}, de ${formatTime(ev.start)} à ${formatTime(ev.end)}${ev.location ? ', ' + esc(ev.location) : ''}"
           >
             <div class="card-inner">
               <header class="card-top-row">
                 <span class="card-tag tag-${info.kind.toLowerCase()}">${info.kind}</span>
                 <span class="card-time">${formatTime(ev.start)} – ${formatTime(ev.end)}</span>
               </header>
-              <h3 class="card-course-title">${info.cleanTitle}</h3>
+              <h3 class="card-course-title">${esc(info.cleanTitle)}</h3>
               <div class="card-bottom-row">
                 ${
                   ev.location
-                    ? `<span class="card-loc"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${ev.location}</span>`
+                    ? `<span class="card-loc"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${esc(ev.location)}</span>`
                     : ''
                 }
-                ${info.group ? `<span class="card-group-pill">${info.group}</span>` : ''}
+                ${info.group ? `<span class="card-group-pill">${esc(info.group)}</span>` : ''}
               </div>
             </div>
           </article>
@@ -954,7 +981,7 @@ import { url } from '../../utils/url';
       const statusClass = isLive ? 'status-live' : isPast ? 'status-past' : 'status-upcoming';
 
       coursesHtml += `
-        <div class="day-course-card card-kind--${info.kind.toLowerCase()} ${statusClass}" data-event-id="${ev.id}" role="button" tabindex="0" title="Cliquer pour afficher la description et les détails">
+        <div class="day-course-card card-kind--${info.kind.toLowerCase()} ${statusClass}" data-event-id="${esc(ev.id)}" role="button" tabindex="0" title="Cliquer pour afficher la description et les détails">
           <div class="card-time-column">
             <span class="time-start">${formatTime(ev.start)}</span>
             <span class="time-sep">↓</span>
@@ -966,18 +993,18 @@ import { url } from '../../utils/url';
             <div class="card-header-tags">
               <span class="card-tag tag-${info.kind.toLowerCase()}">${info.kind}</span>
               <span class="card-status-pill ${statusClass}">${statusLabel}</span>
-              ${ev.location ? `<span class="location-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${ev.location}</span>` : ''}
-              ${info.group ? `<span class="group-pill">${info.group}</span>` : ''}
+              ${ev.location ? `<span class="location-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${esc(ev.location)}</span>` : ''}
+              ${info.group ? `<span class="group-pill">${esc(info.group)}</span>` : ''}
             </div>
 
-            <h3 class="day-card-title">${info.cleanTitle}</h3>
+            <h3 class="day-card-title">${esc(info.cleanTitle)}</h3>
 
             <div class="day-card-actions">
               <a href="${getSubjectUrl(info.folderSlug)}" class="btn btn--sm btn-course-docs" onclick="event.stopPropagation()">
                 <span>Consulter les supports</span>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
               </a>
-              <button type="button" class="btn btn--sm btn-inspect-details" data-inspect-id="${ev.id}">
+              <button type="button" class="btn btn--sm btn-inspect-details" data-inspect-id="${esc(ev.id)}">
                 <span>Détails & description</span>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
               </button>
@@ -1052,7 +1079,7 @@ import { url } from '../../utils/url';
               .map((ev) => {
                 const info = parseCourse(ev.title, ev.category);
                 return `
-                <div class="agenda-card card-kind--${info.kind.toLowerCase()}" data-event-id="${ev.id}" role="button" tabindex="0" title="Cliquer pour afficher la description et les détails">
+                <div class="agenda-card card-kind--${info.kind.toLowerCase()}" data-event-id="${esc(ev.id)}" role="button" tabindex="0" title="Cliquer pour afficher la description et les détails">
                   <div class="agenda-time">
                     <strong>${formatTime(ev.start)}</strong>
                     <span class="meta">${formatTime(ev.end)}</span>
@@ -1060,10 +1087,10 @@ import { url } from '../../utils/url';
                   <div class="agenda-body">
                     <div class="agenda-meta-row">
                       <span class="card-tag tag-${info.kind.toLowerCase()}">${info.kind}</span>
-                      ${ev.location ? `<span class="card-loc"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${ev.location}</span>` : ''}
-                      ${info.group ? `<span class="group-pill">${info.group}</span>` : ''}
+                      ${ev.location ? `<span class="card-loc"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${esc(ev.location)}</span>` : ''}
+                      ${info.group ? `<span class="group-pill">${esc(info.group)}</span>` : ''}
                     </div>
-                    <h4 class="agenda-title">${info.cleanTitle}</h4>
+                    <h4 class="agenda-title">${esc(info.cleanTitle)}</h4>
                   </div>
                 </div>
               `;
@@ -1209,6 +1236,11 @@ import { url } from '../../utils/url';
     const toIcsDate = (d: Date) =>
       `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 
+    // Les sauts de ligne sont retirés : sans cela, un titre de cours contenant
+    // « \r\n » pouvait injecter des propriétés iCalendar dans le fichier exporté.
+    const icsText = (value: string) =>
+      value.replace(/\r?\n/g, ' ').replace(/([,;])/g, '\\$1');
+
     let icsContent = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Marges Universitaire//FR\r\nCALSCALE:GREGORIAN\r\n`;
 
     currentEvents.forEach((ev, idx) => {
@@ -1217,9 +1249,9 @@ import { url } from '../../utils/url';
       icsContent += `DTSTAMP:${toIcsDate(new Date())}Z\r\n`;
       icsContent += `DTSTART:${toIcsDate(ev.start)}\r\n`;
       icsContent += `DTEND:${toIcsDate(ev.end)}\r\n`;
-      icsContent += `SUMMARY:${ev.title.replace(/\r?\n/g, ' ')}\r\n`;
-      if (ev.location) icsContent += `LOCATION:${ev.location}\r\n`;
-      if (ev.description) icsContent += `DESCRIPTION:${ev.description.replace(/\r?\n/g, ' ')}\r\n`;
+      icsContent += `SUMMARY:${icsText(ev.title)}\r\n`;
+      if (ev.location) icsContent += `LOCATION:${icsText(ev.location)}\r\n`;
+      if (ev.description) icsContent += `DESCRIPTION:${icsText(ev.description)}\r\n`;
       icsContent += `END:VEVENT\r\n`;
     });
 

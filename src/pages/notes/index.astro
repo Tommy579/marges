@@ -1276,148 +1276,12 @@ const subjectsList = subjects.map((s) => ({
     overflow-y: auto;
   }
 
-  /* Rendu Markdown façon Notion */
+  /* Rendu Markdown façon Notion (styles de blocs partagés dans global.css via .notion-rendered-flow) */
   .notion-rendered-content {
     font-family: var(--doc-current-font, var(--font-ui));
     font-size: 1.02rem;
     line-height: 1.7;
     color: var(--fg);
-  }
-
-  :global(.notion-rendered-content .notion-h1) {
-    font-size: 1.75rem;
-    font-weight: 700;
-    margin: 1.5rem 0 0.45rem;
-    letter-spacing: -0.02em;
-    font-family: var(--doc-current-font, var(--font-ui));
-  }
-
-  :global(.notion-rendered-content .notion-h2) {
-    font-size: 1.35rem;
-    font-weight: 650;
-    margin: 1.35rem 0 0.35rem;
-    letter-spacing: -0.015em;
-    font-family: var(--doc-current-font, var(--font-ui));
-  }
-
-  :global(.notion-rendered-content .notion-h3) {
-    font-size: 1.15rem;
-    font-weight: 600;
-    margin: 1.15rem 0 0.3rem;
-    font-family: var(--doc-current-font, var(--font-ui));
-  }
-
-  :global(.notion-rendered-content .notion-p) {
-    margin: 0.55rem 0;
-  }
-
-  :global(.notion-rendered-content .notion-callout) {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    padding: 0.8rem 0.95rem;
-    border-radius: var(--radius);
-    background: var(--soft);
-    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
-    margin: 0.9rem 0;
-    font-size: 0.94rem;
-  }
-
-  :global(.notion-rendered-content .notion-callout-icon) {
-    color: var(--accent);
-    display: inline-flex;
-    padding-top: 0.2rem;
-  }
-
-  :global(.notion-rendered-content .notion-callout--important),
-  :global(.notion-rendered-content .notion-callout--warning) {
-    border-color: color-mix(in srgb, var(--warning) 40%, var(--line));
-  }
-
-  :global(.notion-rendered-content .notion-quote) {
-    margin: 0.9rem 0;
-    padding-left: 0.9rem;
-    border-left: 1px solid var(--line-strong);
-    color: var(--muted);
-    font-style: italic;
-  }
-
-  :global(.notion-rendered-content .notion-todo-item) {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 0.3rem 0;
-    cursor: pointer;
-  }
-
-  :global(.notion-rendered-content .notion-todo-item.completed .notion-todo-label) {
-    text-decoration: line-through;
-    color: var(--muted);
-  }
-
-  :global(.notion-rendered-content .notion-bullet-item) {
-    margin-left: 1.25rem;
-    list-style-type: disc;
-  }
-
-  :global(.notion-rendered-content .notion-numbered-item) {
-    margin-left: 1.25rem;
-    list-style-type: decimal;
-  }
-
-  :global(.notion-rendered-content .notion-code-block) {
-    border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-    background: var(--soft);
-    margin: 0.9rem 0;
-    overflow: hidden;
-  }
-
-  :global(.notion-rendered-content .notion-code-header) {
-    display: flex;
-    justify-content: flex-end;
-    padding: 0.25rem 0.75rem;
-    font-size: 0.7rem;
-    font-family: var(--font-ui);
-    color: var(--muted);
-    background: color-mix(in srgb, var(--surface) 60%, transparent);
-    border-bottom: 1px solid var(--line);
-    text-transform: uppercase;
-  }
-
-  :global(.notion-rendered-content pre) {
-    margin: 0;
-    padding: 0.8rem 0.95rem;
-    overflow-x: auto;
-    font-size: 0.86rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  }
-
-  :global(.notion-rendered-content .notion-inline-code) {
-    background: var(--soft);
-    padding: 0.15rem 0.35rem;
-    border-radius: 4px;
-    font-size: 0.88em;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-
-  :global(.notion-rendered-content .notion-highlight) {
-    background: color-mix(in srgb, var(--warning) 28%, transparent);
-    color: inherit;
-    padding: 0.1rem 0.25rem;
-    border-radius: 2px;
-  }
-
-  :global(.notion-rendered-content .notion-divider) {
-    border: none;
-    border-top: 1px solid var(--line);
-    margin: 1.5rem 0;
-  }
-
-  :global(.notion-rendered-content .notion-empty-placeholder) {
-    color: var(--muted);
-    font-style: italic;
-    padding: 2rem 0;
   }
 
   /* -------------------------------------------------------------
@@ -1711,6 +1575,7 @@ const subjectsList = subjects.map((s) => ({
     type NoteItem,
   } from '../../utils/notes';
   import { getUserCoursesImmediate } from '../../utils/supabase';
+  import { esc } from '../../utils/escape';
 
   function initNotesApp() {
     const root = document.querySelector('[data-notes-workspace]') as HTMLElement | null;
@@ -1772,8 +1637,6 @@ const subjectsList = subjects.map((s) => ({
       ? JSON.parse(rawSubjects)
       : [];
 
-    const esc = (v: string) =>
-      String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
     const collapsedGroups = new Set<string>(JSON.parse(localStorage.getItem('marges_notes_collapsed') || '[]'));
     const isMobile = () => window.matchMedia('(max-width: 52rem)').matches;
 

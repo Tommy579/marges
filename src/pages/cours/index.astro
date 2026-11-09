@@ -57,12 +57,6 @@ const subjectsList = subjects.map((s) => ({
       </div>
     </header>
 
-    <!-- Zone de statut / notification d'ajout local -->
-    <div id="course-toast" class="panel course-toast" style="display: none;">
-      <span class="toast-dot"></span>
-      <span id="toast-message">Matière ajoutée avec succès.</span>
-    </div>
-
     <!-- Grille des matières avec DA Marges -->
     <div class="subjects-grid" id="subjects-container">
       {subjects.map((sub) => (
@@ -185,22 +179,6 @@ const subjectsList = subjects.map((s) => ({
     <!-- Lecteur PDF immersif -->
     <PdfViewerModal />
 
-    <!-- Modale de consultation d'un cours / note Markdown (Supabase) -->
-    <dialog class="panel course-modal" id="modal-view-note" style="max-width: 680px; width: 90%;">
-      <div class="modal-inner">
-        <header class="modal-header">
-          <div>
-            <span class="label" id="view-note-meta">Matière / Catégorie</span>
-            <h2 class="modal-title" id="view-note-title">Titre</h2>
-          </div>
-          <button type="button" class="btn-close" id="btn-close-view-note" aria-label="Fermer">✕</button>
-        </header>
-        <div class="markdown-preview" id="view-note-content" style="max-height: 60vh; overflow-y: auto; padding: 1rem 0;"></div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn--sm" id="btn-dismiss-note">Fermer</button>
-        </div>
-      </div>
-    </dialog>
   </div>
 </Base>
 
@@ -227,28 +205,7 @@ const subjectsList = subjects.map((s) => ({
   } from '../../utils/fileStorage';
   import { processFolderUpload } from '../../utils/courseImport';
   import { toast as notifyToast } from '../../utils/toast';
-
-  function renderMarkdown(md: string): string {
-    if (!md) return '<p class="meta">Aucun contenu.</p>';
-    const escaped = md
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-    return escaped
-      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-      .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
-      .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-      .replace(/`([^`]+)`/gim, '<code>$1</code>')
-      .replace(/^\- (.*$)/gim, '<li>$1</li>')
-      .replace(/\n\n+/g, '</p><p>')
-      .replace(/\n/g, '<br />');
-  }
-
-
+  import { esc } from '../../utils/escape';
 
   function initCourseManager() {
     const root = document.querySelector('[data-courses-root]');
@@ -260,16 +217,6 @@ const subjectsList = subjects.map((s) => ({
     const btnCancelSubject = document.getElementById('btn-cancel-subject');
     const btnCancelFile = document.getElementById('btn-cancel-file');
     const btnCancelNote = document.getElementById('btn-cancel-note');
-
-    const modalViewNote = document.getElementById('modal-view-note') as HTMLDialogElement;
-    const viewNoteTitle = document.getElementById('view-note-title');
-    const viewNoteMeta = document.getElementById('view-note-meta');
-    const viewNoteContent = document.getElementById('view-note-content');
-    const btnCloseViewNote = document.getElementById('btn-close-view-note');
-    const btnDismissNote = document.getElementById('btn-dismiss-note');
-
-    btnCloseViewNote?.addEventListener('click', () => modalViewNote?.close());
-    btnDismissNote?.addEventListener('click', () => modalViewNote?.close());
 
     const formSubject = document.getElementById('form-create-subject') as HTMLFormElement;
     const formFile = document.getElementById('form-upload-file') as HTMLFormElement;
@@ -285,18 +232,15 @@ const subjectsList = subjects.map((s) => ({
     const noteTitleInput = document.getElementById('note-title-input') as HTMLInputElement;
     const noteBodyInput = document.getElementById('note-body-input') as HTMLTextAreaElement;
 
-    const toast = document.getElementById('course-toast');
-    const toastMsg = document.getElementById('toast-message');
-
     // 1. Lire les matières initiales
     const rawSubjects = root.getAttribute('data-subjects');
     const baseSubjects: Array<{ id: string; name: string; subfolders: string[] }> = rawSubjects ? JSON.parse(rawSubjects) : [];
 
     let cachedDbCourses: DbCourse[] = [];
 
-    function showToast(msg: string, tone: 'info' | 'success' | 'error' = 'success') {
+    const showToast = (msg: string, tone: 'info' | 'success' | 'error' = 'success') => {
       notifyToast(msg, tone);
-    }
+    };
 
     // Mise à jour de la liste déroulante des matières (Socle + Supabase)
     function populateSubjectsSelect(selectedName?: string) {
@@ -814,9 +758,9 @@ const subjectsList = subjects.map((s) => ({
           card.innerHTML = `
             <div class="subject-header">
               <div class="subject-title-wrap">
-                <span class="subject-initial" aria-hidden="true">${subject.charAt(0).toUpperCase()}</span>
+                <span class="subject-initial" aria-hidden="true">${esc(subject.charAt(0).toUpperCase())}</span>
                 <div>
-                  <h2 class="subject-title">${subject}</h2>
+                  <h2 class="subject-title">${esc(subject)}</h2>
                   <p class="subject-meta meta">
                     <span class="subject-count-label">${subject === 'Notes' ? 'Notes non classées' : 'Matière synchronisée'}</span>
                   </p>
@@ -910,7 +854,7 @@ const subjectsList = subjects.map((s) => ({
           subjectDocCount += files.length;
           totalDocCount += files.length;
 
-          let tdSection = tree.querySelector(`[data-folder-name="${folderName}"]`);
+          let tdSection = tree.querySelector(`[data-folder-name="${CSS.escape(folderName)}"]`);
           if (!tdSection) {
             tdSection = document.createElement('div');
             tdSection.className = 'td-section';
@@ -918,7 +862,7 @@ const subjectsList = subjects.map((s) => ({
             tdSection.innerHTML = `
               <div class="td-header">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="td-folder-icon"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.6l2 2.2h7.4A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></svg>
-                <h3 class="td-title">${folderName}</h3>
+                <h3 class="td-title">${esc(folderName)}</h3>
                 <span class="meta td-count">${files.length}</span>
               </div>
               <ul class="file-list" role="list"></ul>
@@ -946,7 +890,7 @@ const subjectsList = subjects.map((s) => ({
             li.innerHTML = `
               <div class="file-info">
                 <span class="file-badge ${badgeClass}">${badgeLabel}</span>
-                <span class="file-name" style="cursor: pointer;" title="Consulter ${file.title}">${file.title}</span>
+                <span class="file-name" style="cursor: pointer;" title="Consulter ${esc(file.title)}">${esc(file.title)}</span>
               </div>
               <div class="file-actions meta">
                 <button type="button" class="btn btn--sm btn-consult-db">Consulter</button>

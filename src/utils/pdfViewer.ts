@@ -12,6 +12,8 @@ import {
   createUserCourse,
   type DbCourse,
 } from './supabase';
+import { renderNotionMarkdown } from './notes';
+import { esc } from './escape';
 
 export interface OpenPdfOptions {
   title: string;
@@ -132,21 +134,6 @@ async function handleAttachedDocumentFile(file: File): Promise<void> {
 
   // Réaffichage immédiat
   await openDocumentViewer(currentDocContext);
-}
-
-function renderMarkdown(md: string): string {
-  if (!md) return '';
-  return md
-    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-    .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
-    .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-    .replace(/`([^`]+)`/gim, '<code>$1</code>')
-    .replace(/^\- (.*$)/gim, '<li>$1</li>')
-    .replace(/\n\n+/g, '</p><p>')
-    .replace(/\n/g, '<br />');
 }
 
 export async function openDocumentViewer(options: OpenPdfOptions): Promise<void> {
@@ -381,9 +368,9 @@ export async function openDocumentViewer(options: OpenPdfOptions): Promise<void>
             <div style="font-size: 2.5rem; margin-bottom: 1rem;">📄</div>
             <h3 style="margin-bottom: 0.5rem;">Aperçu direct non disponible</h3>
             <p style="color: var(--muted); font-size: 0.92rem; line-height: 1.6; margin-bottom: 1.5rem;">
-              Ce document Word (${docTitle}) ne peut pas être converti directement dans le navigateur (format binaire .doc ancien ou fichier protégé).
+              Ce document Word (${esc(docTitle)}) ne peut pas être converti directement dans le navigateur (format binaire .doc ancien ou fichier protégé).
             </p>
-            <a href="${finalUrl}" download="${docTitle}" class="btn btn--primary" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1.2rem; text-decoration: none;">
+            <a href="${esc(finalUrl)}" download="${esc(docTitle)}" class="btn btn--primary" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1.2rem; text-decoration: none;">
               📥 Télécharger le fichier Word
             </a>
           </div>
@@ -414,7 +401,7 @@ export async function openDocumentViewer(options: OpenPdfOptions): Promise<void>
       if (isMd && mdContent) {
         mdContent.style.display = 'block';
         if (codePre) codePre.style.display = 'none';
-        mdContent.innerHTML = renderMarkdown(rawText);
+        mdContent.innerHTML = renderNotionMarkdown(rawText);
       } else {
         if (mdContent) mdContent.style.display = 'none';
         if (codePre && codeContent) {

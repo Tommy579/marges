@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { COURS_ROOT, getCourses, type CourseFile, type CourseFolder } from '../../../utils/courses';
+import { renderNotionMarkdown } from '../../../utils/notes';
 import { url } from '../../../utils/url';
 import '../../../styles/global.css';
 
@@ -52,14 +53,16 @@ if (file.type === 'code' || file.type === 'text') {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{file.name} — Marges Cours</title>
     <link rel="icon" type="image/svg+xml" href={url('/favicon.svg')} />
-    <script is:inline>
+    <script is:inline define:vars={{ espaceUrl: url('/espace/') }}>
       (function () {
         try {
           var t = localStorage.getItem('theme');
           if (t) document.documentElement.dataset.theme = t;
+          var hasToken = false;
           for (var i = 0; i < localStorage.length; i++) {
             var k = localStorage.key(i);
-            if (k && k.indexOf('sb-') === 0 && k.indexOf('-auth-token') !== -1) {
+            if (k && (k.indexOf('-auth-token') !== -1 || k === 'supabase.auth.token')) {
+              hasToken = true;
               var raw = localStorage.getItem(k);
               if (raw) {
                 var parsed = JSON.parse(raw);
@@ -71,6 +74,9 @@ if (file.type === 'code' || file.type === 'text') {
                 }
               }
             }
+          }
+          if (!hasToken) {
+            window.location.replace(espaceUrl + '?redirect=' + encodeURIComponent(window.location.pathname + window.location.search));
           }
         } catch (e) {}
       })();
@@ -265,6 +271,20 @@ if (file.type === 'code' || file.type === 'text') {
         line-height: 1.6;
         overflow-x: auto;
       }
+      .md-main {
+        padding: clamp(1rem, 0.75rem + 1.5vw, 2.5rem);
+        display: flex;
+        justify-content: center;
+      }
+      .md-viewer-container {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-sm);
+        max-width: 820px;
+        width: 100%;
+        padding: clamp(1.25rem, 1rem + 1.5vw, 2.75rem);
+      }
     </style>
   </head>
   <body>
@@ -291,6 +311,10 @@ if (file.type === 'code' || file.type === 'text') {
           <p class="meta" style="text-align: center; padding: 2rem;">Chargement du document Word...</p>
         </div>
       </main>
+    ) : file.ext.toLowerCase() === '.md' ? (
+      <main class="md-main">
+        <article class="md-viewer-container" set:html={renderNotionMarkdown(content)} />
+      </main>
     ) : (file.type === 'code' || file.type === 'text') ? (
       <pre><code>{content}</code></pre>
     ) : (
@@ -312,6 +336,23 @@ if (file.type === 'code' || file.type === 'text') {
 
     <script>
       import { renderAsync } from 'docx-preview';
+      import { getCurrentSession } from '../../../utils/supabase';
+      import { startGlobalReminderWatcher } from '../../../utils/reminders';
+      import { url } from '../../../utils/url';
+      import { esc } from '../../../utils/escape';
+
+      getCurrentSession()
+        .then((session) => {
+          if (!session || !session.user) {
+            window.location.replace(
+              url('/espace/?redirect=' + encodeURIComponent(window.location.pathname + window.location.search))
+            );
+            return;
+          }
+          startGlobalReminderWatcher();
+        })
+        .catch(() => {});
+
       const container = document.getElementById('docx-container');
       const docUrl = container?.getAttribute('data-url');
       if (container && docUrl) {
@@ -324,11 +365,11 @@ if (file.type === 'code' || file.type === 'text') {
             container.innerHTML = '';
             return renderAsync(buf, container, undefined, { inWrapper: false });
           })
-          .catch((err) => {
+          .catch(() => {
             container.innerHTML = `
               <div style="padding: 2.5rem; text-align: center;">
                 <p style="color: #666; margin-bottom: 1rem;">Ce document Word ne peut pas être prévisualisé directement (ancien format .doc ou fichier protégé).</p>
-                <a href="${docUrl}" download class="btn-header btn-header--primary" style="display: inline-block;">Télécharger le fichier</a>
+                <a href="${esc(docUrl)}" download class="btn-header btn-header--primary" style="display: inline-block;">Télécharger le fichier</a>
               </div>
             `;
           });

@@ -87,24 +87,49 @@ const MAX_RETRIES = RETRY_DELAYS_MS.length;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Erreur de validation du contenu renvoyé par le modèle (frontmatter manquant,
+ * texte trop court…). Ce n'est pas la peine de changer de modèle : le prompt est
+ * le même, donc on réessaie avec le même modèle avant de basculer.
+ */
+class ContentValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ContentValidationError';
+  }
+}
+
+/**
  * Détecte si une erreur de l'API Gemini est temporaire (503, 429, 500, etc.)
+ * Ce type d'erreur justifie un nouvel essai, éventuellement sur un autre modèle.
  */
 function isTransientError(err) {
   if (!err) return false;
+
+  // Les erreurs de validation du contenu se réessayent aussi, mais pour une
+  // autre raison : la génération est stochastique, un second tirage peut passer.
+  if (err instanceof ContentValidationError) return true;
+
+  // Le SDK expose parfois un code HTTP numérique fiable : on le préfère aux regex.
+  const status = Number(err.status ?? err.code ?? err.httpStatus);
+  if (Number.isFinite(status)) {
+    if ([429, 500, 502, 503, 504].includes(status)) return true;
+    if (status >= 400) return false; // 400/401/403/404 : inutile d'insister
+  }
+
   const msg = typeof err === 'string'
     ? err
-    : `${err.message || ''} ${err.status || ''} ${err.statusText || ''} ${JSON.stringify(err)}`;
+    : `${err.message || ''} ${err.statusText || ''} ${err.code || ''}`;
 
   const patterns = [
-    /503/,
+    /\b503\b/,
+    /\b429\b/,
+    /\b500\b/,
+    /\b502\b/,
+    /\b504\b/,
     /UNAVAILABLE/i,
-    /429/,
     /RESOURCE_EXHAUSTED/i,
-    /500/,
     /INTERNAL/i,
-    /502/,
     /BAD_GATEWAY/i,
-    /504/,
     /GATEWAY_TIMEOUT/i,
     /high demand/i,
     /spikes in demand/i,
@@ -131,7 +156,60 @@ function getErrorSummary(err) {
   if (match) return match[1];
   const statusMatch = msg.match(/"status":\s*"([^"]+)"/);
   if (statusMatch) return statusMatch[1];
-  return '503';
+  return 'UNKNOWN';
+}
+
+/**
+ * Vérifie que le frontmatter respecte le schéma de src/content.config.ts.
+ * Sans ce garde-fou, un article hors schéma était commité puis cassait le build.
+ */
+function validateFrontmatter(content) {
+  if (!content.startsWith('---')) {
+    throw new ContentValidationError('Le frontmatter YAML est absent ou mal formé.');
+  }
+
+  const end = content.indexOf('\n---', 3);
+  const block = end === -1 ? content : content.slice(0, end);
+
+  const titleMatch = block.match(/^title:\s*"([^"]+)"/m);
+  if (!titleMatch || !titleMatch[1].trim()) {
+    throw new ContentValidationError("Impossible d'extraire un titre valide depuis le frontmatter.");
+  }
+
+  if (!/^summary:\s*\S/m.test(block)) {
+    throw new ContentValidationError('Champ « summary » absent du frontmatter.');
+  }
+
+  if (!/^date:\s*\d{4}-\d{2}-\d{2}\s*$/m.test(block)) {
+    throw new ContentValidationError('Champ « date » absent ou mal formé (attendu : AAAA-MM-JJ).');
+  }
+
+  const typeMatch = block.match(/^type:\s*"?([a-z-]+)"?\s*$/m);
+  if (!typeMatch || !FORMATS.includes(typeMatch[1])) {
+    throw new ContentValidationError(
+      `Champ « type » invalide (${typeMatch ? typeMatch[1] : 'absent'}) ; attendu : ${FORMATS.join(', ')}.`
+    );
+  }
+
+  const themesMatch = block.match(/^themes:\s*\[([^\]]*)\]/m);
+  const themes = themesMatch
+    ? themesMatch[1].split(',').map((t) => t.trim().replace(/^["']|["']$/g, '')).filter(Boolean)
+    : [];
+  if (themes.length === 0) {
+    throw new ContentValidationError('Champ « themes » vide ou absent.');
+  }
+  const unknownThemes = themes.filter((t) => !THEMES.includes(t));
+  if (unknownThemes.length > 0) {
+    throw new ContentValidationError(
+      `Thème(s) inconnu(s) : ${unknownThemes.join(', ')} ; attendu : ${THEMES.join(', ')}.`
+    );
+  }
+
+  if (!/^isAiGenerated:\s*true\s*$/m.test(block)) {
+    throw new ContentValidationError('Champ « isAiGenerated: true » attendu dans le frontmatter.');
+  }
+
+  return titleMatch[1].trim();
 }
 
 /**
@@ -176,19 +254,14 @@ async function generateWithFallbackAndRetry(prompt) {
 
         // Validation stricte du contenu
         if (!content || content.length < 500) {
-          throw new Error(`Contenu généré trop court ou vide (${content.length} caractères reçus).`);
+          throw new ContentValidationError(
+            `Contenu généré trop court ou vide (${content.length} caractères reçus).`
+          );
         }
 
-        if (!content.startsWith('---')) {
-          throw new Error('Le frontmatter YAML est absent ou mal formé.');
-        }
+        const title = validateFrontmatter(content);
 
-        const titleMatch = content.match(/title:\s*"([^"]+)"/);
-        if (!titleMatch || !titleMatch[1].trim()) {
-          throw new Error("Impossible d'extraire un titre valide depuis le frontmatter.");
-        }
-
-        return { content, title: titleMatch[1].trim(), modelUsed: model };
+        return { content, title, modelUsed: model };
       } catch (err) {
         lastError = err;
         const isTransient = isTransientError(err);
@@ -286,14 +359,22 @@ references:
     const { content, title, modelUsed } = await generateWithFallbackAndRetry(prompt);
 
     // Slugification propre pour le nom de fichier (ex: 2026-10-14-titre-du-texte.md)
-    const slug = title
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+    const slug =
+      title
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'texte-du-jour';
 
-    const fileName = `${todayDate}-${slug}.md`;
+    // Deux générations le même jour, ou un titre recyclé, écraseraient un texte
+    // existant : on suffixe au lieu de perdre le fichier précédent.
+    let fileName = `${todayDate}-${slug}.md`;
+    let suffix = 2;
+    while (fs.existsSync(path.join(targetDir, fileName))) {
+      fileName = `${todayDate}-${slug}-${suffix}.md`;
+      suffix += 1;
+    }
     const targetFile = path.join(targetDir, fileName);
 
     // Écriture sécurisée du fichier

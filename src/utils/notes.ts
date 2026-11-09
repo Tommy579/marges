@@ -291,32 +291,65 @@ export function renderNotionMarkdown(md: string): string {
     return '<p class="notion-empty-placeholder">Commencez à rédiger vos notes ici, ou tapez <code>/</code> pour insérer un bloc.</p>';
   }
 
-  // Échappement anti-XSS préliminaire
-  let html = md
+  // 1. Extraire les blocs de code ```lang ... ``` avant toute transformation ligne par ligne
+  const codeBlocks: string[] = [];
+  const withPlaceholders = md.replace(/```([a-z0-9_-]*)\n([\s\S]*?)```/gim, (_, lang, code) => {
+    const escapedCode = String(code)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .trim();
+    const blockHtml = `<div class="notion-code-block"><div class="notion-code-header"><span class="notion-code-lang">${lang || 'code'}</span></div><pre><code>${escapedCode}</code></pre></div>`;
+    const idx = codeBlocks.push(blockHtml) - 1;
+    return `@@NOTION_CODE_BLOCK_${idx}@@`;
+  });
+
+  // 2. Échappement anti-XSS préliminaire sur le reste du texte
+  let html = withPlaceholders
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  // Blocs de code ```lang ... ```
-  html = html.replace(/```([a-z0-9_-]*)\n([\s\S]*?)```/gim, (_, lang, code) => {
-    return `<div class="notion-code-block"><div class="notion-code-header"><span class="notion-code-lang">${lang || 'code'}</span></div><pre><code>${code.trim()}</code></pre></div>`;
-  });
-
-  // Callouts Notion : > [!NOTE], > [!TIP], > 💡, > [!IMPORTANT]
+  // 3. Callouts Notion : > [!NOTE], > [!TIP], > [!IMPORTANT], > [!WARNING], > [!CAUTION]
   html = html.replace(/^&gt;\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*$)/gim, (_, type, text) => {
     const t = type.toLowerCase();
     return `<div class="notion-callout notion-callout--${t}"><span class="notion-callout-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg></span><div class="notion-callout-text">${text}</div></div>`;
   });
 
-  // Titres
+  // 4. Titres (h1 à h4)
+  html = html.replace(/^#### (.*$)/gim, '<h4 class="notion-h4">$1</h4>');
   html = html.replace(/^### (.*$)/gim, '<h3 class="notion-h3">$1</h3>');
   html = html.replace(/^## (.*$)/gim, '<h2 class="notion-h2">$1</h2>');
   html = html.replace(/^# (.*$)/gim, '<h1 class="notion-h1">$1</h1>');
 
-  // Séparateurs
+  // 5. Tableaux simples Markdown
+  html = html.replace(
+    /^(\|.+\|)\r?\n\|(?:\s*:?-+:?\s*\|)+\r?\n((?:\|.+\|(?:\r?\n|$))+)/gm,
+    (_, headerLine: string, bodyLines: string) => {
+      const parseCells = (row: string) =>
+        row
+          .trim()
+          .replace(/^\||\|$/g, '')
+          .split('|')
+          .map((c) => c.trim());
+      const headers = parseCells(headerLine);
+      const rows = bodyLines
+        .trim()
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map(parseCells);
+      const thead = `<thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead>`;
+      const tbody = `<tbody>${rows
+        .map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`)
+        .join('')}</tbody>`;
+      return `<div class="notion-table-wrap"><table class="notion-table">${thead}${tbody}</table></div>`;
+    }
+  );
+
+  // 6. Séparateurs
   html = html.replace(/^(?:---|\*\*\*|___)$/gim, '<hr class="notion-divider" />');
 
-  // Checkboxes Notion : - [ ] ou - [x]
+  // 7. Checkboxes Notion : - [ ] ou - [x]
   let checkboxCounter = 0;
   html = html.replace(/^-\s*\[([ xX])\]\s*(.*$)/gim, (_, state, label) => {
     const checked = state.toLowerCase() === 'x';
@@ -324,31 +357,42 @@ export function renderNotionMarkdown(md: string): string {
     return `<div class="notion-todo-item ${checked ? 'completed' : ''}" data-todo-index="${idx}"><input type="checkbox" class="notion-todo-cb" ${checked ? 'checked' : ''} data-index="${idx}" /><span class="notion-todo-label">${label}</span></div>`;
   });
 
-  // Citations
+  // 8. Citations
   html = html.replace(/^&gt;\s*(.*$)/gim, '<blockquote class="notion-quote"><p>$1</p></blockquote>');
 
-  // Listes à puces
-  html = html.replace(/^-\s+(.*$)/gim, '<li class="notion-bullet-item">$1</li>');
+  // 9. Listes à puces (- ou *)
+  html = html.replace(/^(?:-|\*)\s+(.*$)/gim, '<li class="notion-bullet-item">$1</li>');
 
-  // Listes numérotées
+  // 10. Listes numérotées
   html = html.replace(/^(\d+)\.\s+(.*$)/gim, '<li class="notion-numbered-item" value="$1">$2</li>');
 
-  // Mise en valeur inline
+  // 11. Mise en valeur inline
   html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
   html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
   html = html.replace(/~~(.*?)~~/gim, '<del>$1</del>');
   html = html.replace(/==(.*?)==/gim, '<mark class="notion-highlight">$1</mark>');
   html = html.replace(/`([^`]+)`/gim, '<code class="notion-inline-code">$1</code>');
 
-  // Liens markdown [texte](url)
-  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s"]+)\)/gim, '<a href="$2" target="_blank" rel="noopener noreferrer" class="notion-link">$1</a>');
+  // 12. Liens markdown [texte](url) sécurisés (https://, http://, mailto:, /, #)
+  html = html.replace(
+    /\[([^\]]+)\]\(((?:https?:\/\/|mailto:|\/|#)[^)\s"]+)\)/gim,
+    '<a href="$2" target="_blank" rel="noopener noreferrer" class="notion-link">$1</a>'
+  );
 
-  // Paragraphes
+  // 13. Paragraphes et retours à la ligne (sans <br /> parasite après les blocs)
   html = html.replace(/\n\n+/g, '</p><p class="notion-p">');
   html = html.replace(/\n/g, '<br />');
+  html = html.replace(/(<\/(?:h[1-4]|div|blockquote|li|table)>|<hr[^>]*>)(?:<br\s*\/?>)+/gi, '$1');
+
+  // 14. Réinjecter les blocs de code intacts
+  html = html.replace(/@@NOTION_CODE_BLOCK_(\d+)@@(?:<br\s*\/?>)*/g, (_, idxStr) => {
+    return codeBlocks[Number(idxStr)] || '';
+  });
 
   return `<div class="notion-rendered-flow"><p class="notion-p">${html}</p></div>`;
 }
+
+export const renderMarkdown = renderNotionMarkdown;
 
 /**
  * Calcul du temps de lecture estimé et du nombre de mots.

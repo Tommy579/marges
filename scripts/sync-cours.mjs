@@ -47,8 +47,8 @@ if (process.argv.includes('--commit')) {
       execSync('git add public/cours-files');
       execSync('git commit -m "chore(cours): mise à jour automatique des supports de cours"');
       if (process.argv.includes('--push')) {
-        console.log('🚀 Push vers origin dev...');
-        execSync('git push origin dev');
+        console.log('🚀 Push vers origin main...');
+        execSync('git push origin main');
       }
     } else {
       console.log('✨ Aucun nouveau fichier de cours à committer.');

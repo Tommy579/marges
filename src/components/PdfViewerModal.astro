@@ -253,7 +253,17 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: auto;
-    padding: 1.25rem;
+    padding: 1.5rem;
+  }
+
+  .markdown-preview {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: clamp(1.25rem, 1rem + 1.5vw, 2.5rem);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
   }
 
   .code-pre {
