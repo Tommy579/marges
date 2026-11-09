@@ -30,10 +30,6 @@ const subjectsList = subjects.map((s) => ({
           <p class="courses-motto">Supports de cours, énoncés de TD et fiches de révisions.</p>
         </div>
         <div class="courses-hero-actions">
-          <button type="button" class="btn btn--sm" id="btn-sync-cloud-files" title="Envoie vers le cloud les documents enregistrés sur cet appareil. Cette vérification est faite automatiquement après chaque import : le bouton sert à la relancer.">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <span id="sync-cloud-label">Sync Cloud</span>
-          </button>
           <a href={url('/notes/')} class="btn btn--sm" title="Prendre des notes de cours">
             <Icon name="edit" size={14} />
             <span>Prendre des notes</span>
@@ -845,9 +841,9 @@ const subjectsList = subjects.map((s) => ({
       populateSubjectsSelect();
     }
 
-    // Gestion du bouton de synchronisation Cloud
-    const btnSyncCloud = document.getElementById('btn-sync-cloud-files');
-    const syncCloudLabel = document.getElementById('sync-cloud-label');
+    // Envoi des documents locaux vers Supabase Storage.
+    // Plus de bouton : l'envoi part tout seul après chaque import. On ne prévient
+    // que s'il échoue vraiment, pour ne pas laisser croire que tout est sauvegardé.
     let isSyncing = false;
 
     // Le cache local a une limite d'environ 5 Mo : au-delà, l'écriture échoue et
@@ -859,53 +855,30 @@ const subjectsList = subjects.map((s) => ({
       );
     });
 
-    async function triggerCloudSync(interactive = false) {
+    async function syncLocalDocuments(): Promise<void> {
       if (isSyncing) return;
       isSyncing = true;
-      if (syncCloudLabel) syncCloudLabel.textContent = 'Vérification...';
 
-      // Un téléversement qui ne répond jamais laissait le bouton bloqué pour de bon
-      // (isSyncing restait vrai). On borne l'attente.
+      // Un téléversement qui ne répond jamais ne doit pas bloquer la suite.
       const watchdog = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error('délai dépassé')), 60_000);
       });
 
       try {
-        const res = await Promise.race([
-          syncLocalFilesToSupabaseStorage((progress) => {
-            if (syncCloudLabel) {
-              syncCloudLabel.textContent = `${progress.current} / ${progress.total}`;
-            }
-          }),
-          watchdog,
-        ]);
-
-        if (interactive) {
-          const parts: string[] = [];
-          if (res.syncedCount > 0) parts.push(`${res.syncedCount} envoyé${res.syncedCount > 1 ? 's' : ''}`);
-          if (res.alreadyCount > 0) parts.push(`${res.alreadyCount} déjà présent${res.alreadyCount > 1 ? 's' : ''}`);
-          if (res.totalCount === 0 && res.errors.length === 0) parts.push('aucun fichier local');
-          if (res.errors.length > 0) parts.push(`${res.errors.length} non envoyé${res.errors.length > 1 ? 's' : ''}`);
-
-          showToast(
-            parts.length > 0 ? `Cloud : ${parts.join(', ')}.` : 'Cloud à jour.',
-            res.errors.length > 0 ? 'info' : 'success'
-          );
-          if (res.errors.length > 0) {
-            console.warn('[StorageSync] Fichiers ignorés:', res.errors);
-          }
+        const res = await Promise.race([syncLocalFilesToSupabaseStorage(), watchdog]);
+        if (res.errors.length > 0) {
+          console.warn('[StorageSync] Fichiers non envoyés:', res.errors);
         }
       } catch (err: any) {
-        if (interactive) {
-          showToast(`Erreur synchronisation : ${err.message || err}`, 'error');
-        }
+        console.warn('[StorageSync] Envoi interrompu:', err);
+        notifyToast(
+          "Certains documents n'ont pas pu être envoyés vers le cloud. Ils restent disponibles sur cet appareil.",
+          'error'
+        );
       } finally {
         isSyncing = false;
-        if (syncCloudLabel) syncCloudLabel.textContent = 'Sync Cloud';
       }
     }
-
-    btnSyncCloud?.addEventListener('click', () => triggerCloudSync(true));
 
     async function loadAndRenderSupabaseCourses() {
       // 1. Affichage instantané depuis le cache local (0 milliseconde de latence)
@@ -961,7 +934,7 @@ const subjectsList = subjects.map((s) => ({
 
     // Synchronisation automatique et discrète des fichiers locaux vers le cloud en arrière-plan
     setTimeout(() => {
-      triggerCloudSync(false);
+      syncLocalDocuments();
     }, 2000);
   }
 

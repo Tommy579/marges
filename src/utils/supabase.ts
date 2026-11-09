@@ -338,6 +338,52 @@ export function getDeletedCourseTombstones(): Set<string> {
   }
 }
 
+/**
+ * Identifiants de cours créés localement et pas encore confirmés par Supabase.
+ *
+ * Sans ce marqueur, impossible de distinguer « supprimé depuis un autre appareil »
+ * de « créé ici mais l'insertion distante a échoué » : la synchronisation écrasait
+ * alors le cache local par la liste distante, et les cours fraîchement importés
+ * disparaissaient juste après être apparus.
+ */
+const PENDING_SYNC_KEY = 'marges_pending_course_sync';
+
+export function getPendingCourseIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(PENDING_SYNC_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.map((id: unknown) => String(id)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writePendingCourseIds(ids: Set<string>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(Array.from(ids).slice(-500)));
+  } catch {}
+}
+
+export function markCoursesPendingSync(ids: Array<string | undefined>): void {
+  const valid = ids.filter((id): id is string => Boolean(id));
+  if (valid.length === 0) return;
+  const pending = getPendingCourseIds();
+  valid.forEach((id) => pending.add(id));
+  writePendingCourseIds(pending);
+}
+
+export function clearCoursesPendingSync(ids: Array<string | undefined>): void {
+  const pending = getPendingCourseIds();
+  if (pending.size === 0) return;
+  let changed = false;
+  ids.forEach((id) => {
+    if (id && pending.delete(id)) changed = true;
+  });
+  if (changed) writePendingCourseIds(pending);
+}
+
 export function addDeletedCourseTombstone(idOrTitle: string): void {
   if (typeof window === 'undefined' || !idOrTitle) return;
   try {
@@ -475,53 +521,38 @@ export async function fetchUserCourses(): Promise<DbCourse[]> {
       }
     });
 
-    // Synchronisation bidirectionnelle intelligente :
+    // Synchronisation bidirectionnelle : on ne perd jamais une création locale.
     if (activeId) {
-      if (remoteFiltered.length > 0) {
-        // La base Supabase contient des cours.
-        // Vérifier si des cours créés localement (ex: hors-ligne) ne sont pas encore dans Supabase
-        const remoteTitles = new Set(remoteFiltered.map((r) => r.title.toLowerCase().trim()));
-        const missingRemotely = localCourses.filter(
-          (l) =>
-            (!l.id || !isValidUuid(l.id)) &&
-            !remoteTitles.has(l.title.toLowerCase().trim()) &&
-            !tombstones.has((l.id || '').toLowerCase().trim()) &&
-            !tombstones.has(l.title.toLowerCase().trim())
-        );
+      const remoteIds = new Set(remoteFiltered.map((r) => r.id).filter(Boolean) as string[]);
+      const pendingIds = getPendingCourseIds();
 
-        if (missingRemotely.length > 0) {
-          // Pousser les cours locaux orphelins vers Supabase en tâche de fond
-          createBatchUserCourses(missingRemotely).catch((e) =>
-            console.warn('[Supabase Sync] Téléversement des cours locaux non synchronisés:', e)
-          );
-        }
+      // Un cours local absent du distant est une création en attente dans deux cas :
+      // il n'a pas encore d'identifiant valide, ou il est marqué « à synchroniser »
+      // (l'insertion distante précédente a échoué). Dans les deux cas on le renvoie
+      // au lieu de le faire disparaître de l'écran.
+      const pendingLocal = localCourses.filter((l) => {
+        const title = (l.title || '').toLowerCase().trim();
+        if (!title) return false;
+        if (tombstones.has((l.id || '').toLowerCase().trim()) || tombstones.has(title)) return false;
+        if (l.id && remoteIds.has(l.id)) return false;
+        return !l.id || !isValidUuid(l.id) || pendingIds.has(l.id);
+      });
 
-        saveLocalUserCourses(activeId, remoteFiltered);
-        return remoteFiltered;
-      } else {
-        // Supabase est vide ou tous les cours distants ont été supprimés
-        // Ne pousser les cours locaux que s'il ne s'agit pas de tombstones et que des cours existent
-        const validLocal = localCourses.filter(
-          (l) =>
-            !tombstones.has((l.id || '').toLowerCase().trim()) &&
-            !tombstones.has(l.title.toLowerCase().trim())
+      if (pendingLocal.length > 0) {
+        createBatchUserCourses(pendingLocal).catch((e) =>
+          console.warn('[Supabase Sync] Téléversement des cours locaux non synchronisés:', e)
         );
-        if (validLocal.length > 0 && tombstones.size === 0) {
-          try {
-            const pushed = await createBatchUserCourses(validLocal);
-            if (pushed && pushed.length > 0) {
-              saveLocalUserCourses(activeId, pushed);
-              return pushed;
-            }
-          } catch (pushErr) {
-            console.warn('[Supabase Sync] Échec téléversement initial des cours:', pushErr);
-          }
-          return validLocal;
-        } else {
-          saveLocalUserCourses(activeId, []);
-          return [];
-        }
       }
+
+      const merged = [...remoteFiltered, ...pendingLocal];
+      if (merged.length > 0) {
+        saveLocalUserCourses(activeId, merged);
+        return merged;
+      }
+
+      // Vraiment rien nulle part : le cache peut être vidé.
+      saveLocalUserCourses(activeId, []);
+      return [];
     }
 
     return remoteFiltered;
@@ -641,6 +672,10 @@ export async function createBatchUserCourses(courses: Array<Omit<DbCourse, 'id' 
     if (c.id) clearCourseTombstone(c.id);
   });
 
+  // Tant que l'insertion distante n'a pas réussi, ces lignes ne doivent jamais être
+  // effacées par la synchronisation au prochain chargement.
+  markCoursesPendingSync(coursesWithUser.map((c) => c.id));
+
   // Sauvegarde optimiste immédiate dans le stockage local du compte
   const currentLocal = getLocalUserCourses(user.id);
   const existingIds = new Set(currentLocal.map((c) => c.id).filter(Boolean));
@@ -680,12 +715,14 @@ export async function createBatchUserCourses(courses: Array<Omit<DbCourse, 'id' 
       const fallbackRows = rowsToInsert.map(({ id, ...rest }) => rest);
       const retry = await sb.from('courses').insert(fallbackRows).select();
       if (retry.data && retry.data.length > 0) {
+        clearCoursesPendingSync(coursesWithUser.map((c) => c.id));
         const updated = [...retry.data, ...currentLocal.filter((c) => !retry.data.some((d) => d.title.toLowerCase() === c.title.toLowerCase()))];
         saveLocalUserCourses(user.id, updated);
         notifyCoursesChanged('create', retry.data);
         return retry.data;
       }
     } else if (data && data.length > 0) {
+      clearCoursesPendingSync(coursesWithUser.map((c) => c.id));
       const updated = [...data, ...currentLocal.filter((c) => !data.some((d) => d.id === c.id || d.title.toLowerCase() === c.title.toLowerCase()))];
       saveLocalUserCourses(user.id, updated);
       notifyCoursesChanged('create', data);
@@ -753,6 +790,7 @@ export async function deleteUserCourse(id: string): Promise<void> {
   const activeId = user?.id;
 
   addDeletedCourseTombstone(id);
+  clearCoursesPendingSync([id]);
 
   if (activeId) {
     const local = getLocalUserCourses(activeId);
@@ -791,6 +829,7 @@ export async function deleteBatchUserCourses(ids: string[]): Promise<void> {
   const activeId = user?.id;
 
   ids.forEach((id) => addDeletedCourseTombstone(id));
+  clearCoursesPendingSync(ids);
 
   if (activeId) {
     const toDel = new Set(ids.map((i) => i.toLowerCase().trim()));
@@ -834,6 +873,7 @@ export async function clearUserCourses(): Promise<void> {
       addDeletedCourseTombstone(c.title);
       cleanupCourseFiles(c, activeId).catch(() => {});
     });
+    clearCoursesPendingSync(local.map((c) => c.id));
     saveLocalUserCourses(activeId, []);
   }
 
