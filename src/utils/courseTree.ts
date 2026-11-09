@@ -133,14 +133,14 @@ export function isArborescenceContainer(course: DbCourse, sections = parseMarkdo
 /** Une note sans matière réelle est rangée à la racine, sous « Notes ». */
 export function isRootNote(tags?: string[]): boolean {
   if (!tags || !tags.includes('note')) return false;
-  return !tags.some((t) => !t.startsWith('icon:') && !IGNORED_SUBJECT_TAGS.has(t));
+  return !tags.some((t) => !t.startsWith('icon:') && !t.startsWith('font:') && !IGNORED_SUBJECT_TAGS.has(t));
 }
 
 function resolveSubject(course: DbCourse): string {
   if (isRootNote(course.tags)) return 'Notes';
 
   const tags = course.tags || [];
-  const cleanTags = tags.filter((t) => !t.startsWith('icon:') && !IGNORED_SUBJECT_TAGS.has(t));
+  const cleanTags = tags.filter((t) => !t.startsWith('icon:') && !t.startsWith('font:') && !IGNORED_SUBJECT_TAGS.has(t));
   if (cleanTags.length > 0) return cleanTags[0].trim();
 
   if (tags.includes('Matière') && course.title) return course.title.trim();

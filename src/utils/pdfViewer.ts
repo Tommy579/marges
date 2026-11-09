@@ -195,6 +195,17 @@ export async function openDocumentViewer(options: OpenPdfOptions): Promise<void>
   // sur le serveur statique : c'est ce détour qui menait à « fichier introuvable ».
   const preferInMemoryContent = Boolean(options.content) && (isMd || isText);
 
+  // La police choisie dans l'éditeur de notes est enregistrée sur la note (tag
+  // « font: ») : on la retrouve ici pour que le document s'affiche pareil.
+  const noteFontTag = (options.rawCourse?.tags || []).find((t) => t.startsWith('font:'));
+  const noteFont = noteFontTag ? noteFontTag.slice('font:'.length) : null;
+  const applyNoteFont = (el: HTMLElement | null) => {
+    if (!el) return;
+    el.classList.remove('md-font-sans', 'md-font-serif');
+    // Sans préférence enregistrée, on garde la police éditoriale (serif) d'avant.
+    el.classList.add(noteFont === 'sans' ? 'md-font-sans' : 'md-font-serif');
+  };
+
   if (titleEl) titleEl.textContent = docTitle;
   if (breadcrumbEl) breadcrumbEl.textContent = `${docSubject} / ${docFolder}`;
   if (missingFilename) missingFilename.textContent = docTitle;
@@ -421,6 +432,7 @@ export async function openDocumentViewer(options: OpenPdfOptions): Promise<void>
       if (isMd && mdContent) {
         mdContent.style.display = 'block';
         if (codePre) codePre.style.display = 'none';
+        applyNoteFont(mdContent);
         mdContent.innerHTML = renderNotionMarkdown(rawText);
       } else {
         if (mdContent) mdContent.style.display = 'none';
@@ -477,6 +489,7 @@ export async function openDocumentViewer(options: OpenPdfOptions): Promise<void>
     if (isMd && mdContent) {
       mdContent.style.display = 'block';
       if (codePre) codePre.style.display = 'none';
+      applyNoteFont(mdContent);
       mdContent.innerHTML =
         '<p class="notion-empty-placeholder">Cette note ne contient encore aucun texte. Ouvrez-la dans l’éditeur de notes pour la rédiger.</p>';
     } else {

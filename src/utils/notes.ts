@@ -19,6 +19,8 @@ export interface NoteItem {
   subject: string;
   category: string;
   icon?: string;
+  /** Police de la note : suit la note d'une page à l'autre (éditeur, lecteur). */
+  font?: 'serif' | 'sans';
   created_at: string;
   updated_at: string;
 }
@@ -56,6 +58,7 @@ export function dbCourseToNote(c: DbCourse): NoteItem {
     const cleanTags = c.tags.filter(
       (t) =>
         !t.startsWith('icon:') &&
+        !t.startsWith('font:') &&
         t !== 'note' &&
         t !== 'Université' &&
         t !== 'Dossier importé' &&
@@ -77,6 +80,9 @@ export function dbCourseToNote(c: DbCourse): NoteItem {
     if (iconTag) icon = iconTag.replace('icon:', '');
   }
 
+  const fontTag = (c.tags || []).find((t) => t.startsWith('font:'));
+  const font = fontTag ? (fontTag.slice('font:'.length) === 'serif' ? 'serif' : 'sans') : undefined;
+
   return {
     id: c.id || generateId(),
     title: c.title || 'Sans titre',
@@ -84,6 +90,7 @@ export function dbCourseToNote(c: DbCourse): NoteItem {
     subject,
     category,
     icon,
+    font,
     created_at: c.created_at || new Date().toISOString(),
     updated_at: c.updated_at || new Date().toISOString(),
   };
@@ -103,6 +110,9 @@ export function noteToDbCourse(note: NoteItem): DbCourse {
   tags.push('note');
   if (note.icon) {
     tags.push(`icon:${note.icon}`);
+  }
+  if (note.font) {
+    tags.push(`font:${note.font}`);
   }
   return {
     id: note.id,
@@ -131,7 +141,15 @@ export function getLocalNotes(): NoteItem[] {
   const courses = getUserCoursesImmediate();
   const notesFromCourses = courses.filter(isCourseNote).map(dbCourseToNote);
   notesFromCourses.forEach((n) => {
-    if (n && n.id && !noteMap.has(n.id)) noteMap.set(n.id, n);
+    if (!n || !n.id) return;
+    const existing = noteMap.get(n.id);
+    if (!existing) {
+      noteMap.set(n.id, n);
+      return;
+    }
+    // La police de la note n'est connue que par la ligne de cours (tag « font: ») :
+    // on la reporte pour qu'elle s'applique à la réouverture.
+    if (!existing.font && n.font) existing.font = n.font;
   });
 
   // 3. Stockage invité persistant

@@ -1658,23 +1658,29 @@ const subjectsList = subjects.map((s) => ({
     let slashDismissedPos: number | null = null;
 
     // Gestion du style de police (Sans-serif par défaut vs Serif)
+    // La police est enregistrée sur la note elle-même (tag « font: »), pour la suivre
+    // quand on la rouvre ou qu'on la consulte dans le lecteur.
     const savedFont = localStorage.getItem('marges_note_font') || 'sans';
-    applyDocFont(savedFont);
+    applyDocFont(savedFont, true);
 
-    function applyDocFont(fontType: string) {
+    function applyDocFont(fontType: string, persistGlobal = true) {
       if (!docCanvas) return;
       docCanvas.classList.remove('font-sans', 'font-serif');
       docCanvas.classList.add(fontType === 'serif' ? 'font-serif' : 'font-sans');
       document.querySelectorAll('.btn-font-toggle').forEach((btn) => {
         btn.classList.toggle('active', btn.getAttribute('data-font') === fontType);
       });
-      localStorage.setItem('marges_note_font', fontType);
+      if (persistGlobal) localStorage.setItem('marges_note_font', fontType);
     }
 
     document.querySelectorAll('.btn-font-toggle').forEach((btn) => {
       btn.addEventListener('click', () => {
         const fontType = btn.getAttribute('data-font') || 'sans';
         applyDocFont(fontType);
+        // La note courante mémorise son choix : c'est triggerAutoSave qui la met à
+        // jour (il lit la police sur le canvas), sinon la comparaison « rien n'a
+        // changé » annulerait l'enregistrement.
+        if (currentNoteId) triggerAutoSave();
       });
     });
 
@@ -2118,11 +2124,14 @@ const subjectsList = subjects.map((s) => ({
             ? propCustomCategory.value.trim() || 'Fiches de révisions'
             : propCategorySelect.value;
 
+      const fontVal: 'serif' | 'sans' = docCanvas?.classList.contains('font-serif') ? 'serif' : 'sans';
+
       if (
         target.title === titleVal &&
         target.body_md === bodyVal &&
         target.subject === subjectVal &&
-        target.category === categoryVal
+        target.category === categoryVal &&
+        target.font === fontVal
       ) {
         return;
       }
@@ -2131,6 +2140,7 @@ const subjectsList = subjects.map((s) => ({
       target.body_md = bodyVal;
       target.subject = subjectVal;
       target.category = categoryVal;
+      target.font = fontVal;
 
       if (crumbSubjectLabel) crumbSubjectLabel.textContent = subjectVal || 'Notes libres';
       if (crumbTitleLabel) crumbTitleLabel.textContent = titleVal;
