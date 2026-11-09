@@ -440,25 +440,6 @@ const localPresetCourses = getCourses().map((s) => {
     <!-- MODALE LECTEUR PDF HAUTE PERFORMANCE -->
     <PdfViewerModal />
 
-    <!-- MODAL : LECTURE DE COURS -->
-    <div id="modal-view-course" class="modal-overlay" style="display: none;">
-      <div class="modal-dialog modal-dialog--wide">
-        <div class="modal-header">
-          <div>
-            <h3 id="view-course-modal-title">Titre</h3>
-            <p class="meta" id="view-course-modal-meta">Tags</p>
-          </div>
-          <button type="button" class="btn-close" id="btn-close-view-modal" aria-label="Fermer">✕</button>
-        </div>
-        <div class="modal-body">
-          <div id="view-course-body" class="markdown-rendered-view"></div>
-        </div>
-        <div class="modal-footer card-actions">
-          <button type="button" class="btn btn--sm" id="btn-close-view-bottom">Fermer la lecture</button>
-        </div>
-      </div>
-    </div>
-
     <!-- MODAL : AJOUT DE CRÉNEAU D'EMPLOI DU TEMPS -->
     <div id="modal-schedule" class="modal-overlay" style="display: none;">
       <div class="modal-dialog">
@@ -582,6 +563,7 @@ const localPresetCourses = getCourses().map((s) => {
   import { toast } from '../../utils/toast';
   import { renderNotionMarkdown as renderMarkdown } from '../../utils/notes';
   import { esc } from '../../utils/escape';
+  import { groupCoursesBySubject, sortSubjects, sortFolders, courseSubject } from '../../utils/courseTree';
 
   const DAY_NAMES = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
@@ -927,76 +909,144 @@ const localPresetCourses = getCourses().map((s) => {
         return;
       }
       if (coursesEmpty) coursesEmpty.style.display = 'none';
-      if (coursesSelectionBar) coursesSelectionBar.style.display = 'flex';
 
-      cachedCourses.sort((a, b) => a.title.localeCompare(b.title, 'fr', { numeric: true, sensitivity: 'base' }));
+      // La sélection par cases à cocher n'a plus de sens dans une arborescence :
+      // la suppression se fait par matière ou par document.
+      if (coursesSelectionBar) coursesSelectionBar.style.display = 'none';
+      selectedCourseIds.clear();
+      updateSelectionUI();
 
-      cachedCourses.forEach((c) => {
-        const card = document.createElement('div');
-        const isSelected = c.id ? selectedCourseIds.has(c.id) : false;
-        card.className = `panel course-card${isSelected ? ' course-card--selected' : ''}`;
-        const tags = c.tags && c.tags.length ? c.tags.map((t) => `<span class="tag-pill">${esc(t)}</span>`).join(' ') : '';
-        const dateStr = c.updated_at ? new Date(c.updated_at).toLocaleDateString('fr-FR') : '';
+      // Même arborescence que la page Cours (matières → dossiers → documents).
+      const tree = groupCoursesBySubject(cachedCourses);
+      const subjects = sortSubjects(tree.values());
 
-        card.innerHTML = `
-          <div class="card-top">
-            <div style="display: flex; align-items: flex-start; gap: 0.6rem; min-width: 0;">
-              <input type="checkbox" class="chk-select-course" data-id="${esc(c.id || '')}" title="Sélectionner ce cours" style="margin-top: 0.25rem; cursor: pointer; width: 16px; height: 16px; flex-shrink: 0;" ${isSelected ? 'checked' : ''} />
-              <h3 class="course-card-title">${esc(c.title)}</h3>
-            </div>
-            <span class="meta" style="flex-shrink: 0;">${dateStr}</span>
-          </div>
-          <div class="tags-row">${tags}</div>
-          <div class="card-bottom">
-            <button type="button" class="btn btn--sm btn-read-course" data-id="${esc(c.id)}">Lire</button>
-            <button type="button" class="btn btn--danger btn--sm btn-del-course" data-id="${esc(c.id)}">Supprimer</button>
-          </div>
-        `;
+      subjects.forEach((sData) => {
+        const docCount = Array.from(sData.folders.values()).reduce((n, list) => n + list.length, 0);
+        if (docCount === 0) return;
 
-        card.querySelector('.chk-select-course')?.addEventListener('change', (e) => {
-          const target = e.target as HTMLInputElement;
-          if (c.id) {
-            if (target.checked) {
-              selectedCourseIds.add(c.id);
-            } else {
-              selectedCourseIds.delete(c.id);
-            }
-            updateSelectionUI();
+        const card = document.createElement('article');
+        card.className = 'panel espace-subject';
+
+        const head = document.createElement('header');
+        head.className = 'espace-subject-head';
+
+        const titles = document.createElement('div');
+        const title = document.createElement('h3');
+        title.className = 'course-card-title';
+        title.textContent = sData.subject;
+        const meta = document.createElement('span');
+        meta.className = 'meta';
+        meta.textContent = `${sData.folders.size} dossier${sData.folders.size > 1 ? 's' : ''} · ${docCount} document${docCount > 1 ? 's' : ''}`;
+        titles.append(title, meta);
+
+        const btnDelSubject = document.createElement('button');
+        btnDelSubject.type = 'button';
+        btnDelSubject.className = 'btn btn--danger btn--sm';
+        btnDelSubject.textContent = 'Supprimer la matière';
+        btnDelSubject.addEventListener('click', async () => {
+          const rows = cachedCourses.filter((c) => c.id && courseSubject(c) === sData.subject);
+          if (rows.length === 0) return;
+          const message = `Supprimer définitivement « ${sData.subject} » (${rows.length} fiche${rows.length > 1 ? 's' : ''} de cours) ? Cette action est irréversible.`;
+          if (!confirm(message)) return;
+
+          const ids = rows.map((r) => r.id!);
+          const idSet = new Set(ids);
+          cachedCourses = cachedCourses.filter((c) => !c.id || !idSet.has(c.id));
+          if (badgeCourses) badgeCourses.textContent = String(cachedCourses.length);
+          renderCourses();
+
+          try {
+            await deleteBatchUserCourses(ids);
+            notify(`« ${sData.subject} » supprimé.`);
+          } catch (err: any) {
+            notify('Erreur lors de la suppression : ' + formatSupabaseError(err), true);
+            await loadCourses();
           }
         });
 
-        card.querySelector('.btn-read-course')?.addEventListener('click', () => {
-          openCourseReader(c);
-        });
+        head.append(titles, btnDelSubject);
 
-        card.querySelector('.btn-del-course')?.addEventListener('click', async () => {
-          if (confirm(`Supprimer définitivement le cours "${c.title}" ?`)) {
-            // 1. Suppression optimiste immédiate dans l'UI (0 ms)
-            card.remove();
-            if (c.id) selectedCourseIds.delete(c.id);
-            cachedCourses = cachedCourses.filter((item) => (c.id ? item.id !== c.id : item.title !== c.title));
-            if (badgeCourses) badgeCourses.textContent = String(cachedCourses.length);
-            updateSelectionUI();
-            if (cachedCourses.length === 0 && coursesEmpty) {
-              coursesEmpty.style.display = 'block';
-              if (coursesSelectionBar) coursesSelectionBar.style.display = 'none';
+        const foldersWrap = document.createElement('div');
+        foldersWrap.className = 'espace-folders';
+
+        sortFolders(sData).forEach((folderName) => {
+          const files = (sData.folders.get(folderName) || [])
+            .slice()
+            .sort((a, b) => a.title.localeCompare(b.title, 'fr', { numeric: true, sensitivity: 'base' }));
+          if (files.length === 0) return;
+
+          const block = document.createElement('section');
+          block.className = 'espace-folder';
+
+          const folderTitle = document.createElement('h4');
+          folderTitle.className = 'espace-folder-title';
+          folderTitle.textContent = folderName;
+
+          const list = document.createElement('ul');
+          list.className = 'espace-doc-list';
+
+          files.forEach((file) => {
+            const item = document.createElement('li');
+            item.className = 'espace-doc';
+
+            const badge = document.createElement('span');
+            badge.className = 'espace-doc-badge';
+            badge.textContent = (file.ext || 'doc').toUpperCase().slice(0, 4);
+
+            const open = document.createElement('button');
+            open.type = 'button';
+            open.className = 'espace-doc-name';
+            open.textContent = file.title;
+            open.title = 'Consulter ce document';
+            open.addEventListener('click', () => {
+              openPdfViewer({
+                title: file.title,
+                subject: sData.subject,
+                folder: folderName,
+                fileUrl: file.url,
+                rawCourse: file.rawCourse,
+                content: file.content,
+                ext: file.ext,
+              });
+            });
+
+            item.append(badge, open);
+
+            // Suppression possible seulement quand le document est une ligne de cours
+            // à lui seul (et non un fichier listé dans l'arborescence d'une matière).
+            const standalone = file.rawCourse && file.rawCourse.id && file.rawCourse.title === file.title;
+            if (standalone) {
+              const del = document.createElement('button');
+              del.type = 'button';
+              del.className = 'espace-doc-del';
+              del.title = 'Supprimer ce document';
+              del.textContent = '✕';
+              del.addEventListener('click', async () => {
+                if (!confirm(`Supprimer définitivement « ${file.title} » ?`)) return;
+                item.remove();
+                cachedCourses = cachedCourses.filter((c) => c.id !== file.rawCourse!.id);
+                if (badgeCourses) badgeCourses.textContent = String(cachedCourses.length);
+                try {
+                  await deleteUserCourse(file.rawCourse!.id!);
+                  notify('Document supprimé.');
+                } catch (err: any) {
+                  notify(formatSupabaseError(err), true);
+                  await loadCourses();
+                }
+              });
+              item.append(del);
             }
 
-            try {
-              const courseIdentifier = c.id || c.title;
-              await deleteUserCourse(courseIdentifier);
-              notify('Cours supprimé avec succès.');
-            } catch (err: any) {
-              notify(formatSupabaseError(err), true);
-              await loadCourses();
-            }
-          }
+            list.appendChild(item);
+          });
+
+          block.append(folderTitle, list);
+          foldersWrap.appendChild(block);
         });
 
+        card.append(head, foldersWrap);
         coursesGrid.appendChild(card);
       });
-
-      updateSelectionUI();
     }
 
     chkSelectAllCourses?.addEventListener('change', () => {
@@ -1237,85 +1287,6 @@ const localPresetCourses = getCourses().map((s) => {
     });
 
     // Modal Lecture Cours
-    const modalViewCourse = document.getElementById('modal-view-course');
-    const viewCourseTitle = document.getElementById('view-course-modal-title');
-    const viewCourseMeta = document.getElementById('view-course-modal-meta');
-    const viewCourseBody = document.getElementById('view-course-body');
-    const btnCloseViewModal = document.getElementById('btn-close-view-modal');
-    const btnCloseViewBottom = document.getElementById('btn-close-view-bottom');
-
-    function openCourseReader(c: DbCourse) {
-      const extMatch = c.title.match(/\.([a-zA-Z0-9]+)$/);
-      const ext = extMatch ? extMatch[1].toLowerCase() : '';
-      const isDirectDoc = ['pdf', 'docx', 'doc', 'txt', 'c', 'h', 'cpp', 'java', 'py'].includes(ext) ||
-        (c.body_md && c.body_md.startsWith('data:'));
-
-      if (isDirectDoc) {
-        openPdfViewer({
-          title: c.title,
-          subject: c.tags?.[0] || 'Matière',
-          folder: c.tags?.[1] || 'Document',
-          rawCourse: c,
-        });
-        return;
-      }
-
-      if (viewCourseTitle) viewCourseTitle.textContent = c.title;
-      if (viewCourseMeta) {
-        const tags = (c.tags || []).join(', ') || 'Général';
-        const date = c.updated_at ? new Date(c.updated_at).toLocaleDateString('fr-FR') : '';
-        viewCourseMeta.textContent = `${tags} · Mis à jour le ${date}`;
-      }
-      if (viewCourseBody) {
-        viewCourseBody.innerHTML = renderMarkdown(c.body_md);
-
-        // Permet d'ouvrir n'importe quel document (PDF, Word DOCX, Textes, Code) listé dans le cours directement dans le lecteur !
-        viewCourseBody.querySelectorAll('li').forEach((li) => {
-          const txt = li.textContent?.trim() || '';
-          const cleanName = txt.replace(/^[-*]\s*/, '').trim();
-          const itemExtMatch = cleanName.match(/\.([a-zA-Z0-9]+)$/);
-          if (itemExtMatch) {
-            const itemExt = itemExtMatch[1].toLowerCase();
-            // Déterminer le sous-dossier (h3 précédent dans l'aperçu)
-            let detectedFolder = 'Document';
-            let prev: Element | null = li.previousElementSibling;
-            while (prev) {
-              if (prev.tagName === 'H3') {
-                detectedFolder = prev.textContent?.trim() || 'Document';
-                break;
-              }
-              prev = prev.previousElementSibling;
-            }
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn--sm';
-            btn.style.marginLeft = '0.6rem';
-            btn.style.padding = '0.15rem 0.5rem';
-            btn.style.fontSize = '0.78rem';
-            btn.textContent = `Consulter (${itemExt.toUpperCase()})`;
-            btn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              openPdfViewer({
-                title: cleanName,
-                subject: c.title,
-                folder: detectedFolder,
-                rawCourse: c,
-              });
-            });
-            li.appendChild(btn);
-          }
-        });
-      }
-      if (modalViewCourse) modalViewCourse.style.display = 'flex';
-    }
-
-    btnCloseViewModal?.addEventListener('click', () => {
-      if (modalViewCourse) modalViewCourse.style.display = 'none';
-    });
-    btnCloseViewBottom?.addEventListener('click', () => {
-      if (modalViewCourse) modalViewCourse.style.display = 'none';
-    });
-
     // -------------------------------------------------------------
     // GESTION DE L'EMPLOI DU TEMPS
     // -------------------------------------------------------------
@@ -2202,6 +2173,103 @@ const localPresetCourses = getCourses().map((s) => {
   }
 
   /* Grille Cours */
+  /* Arborescence des cours (même hiérarchie que la page Cours) */
+  .espace-subject {
+    /* Une arborescence se lit sur toute la largeur, pas en colonnes de 260 px. */
+    grid-column: 1 / -1;
+    padding: 1.1rem 1.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+  .espace-subject-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .espace-subject-head .course-card-title {
+    font-size: 1.1rem;
+  }
+  .espace-subject-head .meta {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.8rem;
+  }
+  .espace-folders {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+  .espace-folder {
+    border-left: 2px solid var(--line);
+    padding-left: 0.9rem;
+  }
+  .espace-folder-title {
+    margin: 0 0 0.35rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .espace-doc-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .espace-doc {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+  .espace-doc-badge {
+    flex-shrink: 0;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    background: var(--soft);
+    color: var(--muted);
+  }
+  .espace-doc-name {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 0.2rem 0;
+    font: inherit;
+    font-size: 0.92rem;
+    color: inherit;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .espace-doc-name:hover {
+    color: var(--accent);
+  }
+  .espace-doc-del {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 0.2rem 0.35rem;
+    border-radius: 4px;
+  }
+  .espace-doc-del:hover {
+    color: var(--danger, #dc2626);
+    background: var(--soft);
+  }
   .cards-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));

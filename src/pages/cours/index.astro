@@ -206,6 +206,7 @@ const subjectsList = subjects.map((s) => ({
   import { processFolderUpload } from '../../utils/courseImport';
   import { toast as notifyToast } from '../../utils/toast';
   import { esc } from '../../utils/escape';
+  import { groupCoursesBySubject, sortSubjects, sortFolders } from '../../utils/courseTree';
 
   function initCourseManager() {
     const root = document.querySelector('[data-courses-root]');
@@ -545,63 +546,9 @@ const subjectsList = subjects.map((s) => ({
       }
     });
 
-    // 4. Charger et afficher les cours depuis la base Supabase avec classement intelligent
-    function getFolderSortScore(name: string): number {
-      const low = name.toLowerCase();
-      if (low === 'cm' || low.includes('cours')) return 10;
-      if (low === 'td' || low.includes('dirigé')) return 20;
-      if (low === 'tp' || low.includes('pratique')) return 30;
-      if (low.includes('fiche') || low.includes('revision') || low.includes('révision')) return 40;
-      if (low.includes('programme') || low.includes('notion') || low.includes('clé')) return 50;
-      if (low.includes('document') || low.includes('général') || low.includes('racine')) return 60;
-      return 70;
-    }
-
-    function parseMarkdownSubfolders(body_md: string) {
-      if (!body_md) return [];
-      const sections: Array<{ folderName: string; items: Array<{ title: string; url?: string; ext: string; content?: string }> }> = [];
-      const lines = body_md.split('\n');
-      let currentFolder = '';
-      let currentItems: Array<{ title: string; url?: string; ext: string; content?: string }> = [];
-
-      for (let line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('### ')) {
-          if (currentFolder && currentItems.length > 0) {
-            sections.push({ folderName: currentFolder, items: currentItems });
-          }
-          currentFolder = trimmed.replace(/^###\s+/, '').trim();
-          currentItems = [];
-        } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-          const raw = trimmed.replace(/^[-*]\s+/, '').trim();
-          const linkMatch = raw.match(/^\[([^\]]+)\]\(([^)]+)\)/);
-          let title = raw;
-          let fileUrl = '';
-          if (linkMatch) {
-            title = linkMatch[1];
-            fileUrl = linkMatch[2];
-          }
-          let ext = 'note';
-          const extMatch = title.match(/\.([a-zA-Z0-9]+)(\s|$|\))/);
-          if (extMatch) {
-            ext = extMatch[1].toLowerCase();
-          } else if (fileUrl && fileUrl.endsWith('.pdf')) {
-            ext = 'pdf';
-          }
-          currentItems.push({ title, url: fileUrl, ext, content: raw });
-        }
-      }
-
-      if (currentFolder && currentItems.length > 0) {
-        sections.push({ folderName: currentFolder, items: currentItems });
-      }
-
-      if (sections.length === 0 && currentItems.length > 0) {
-        sections.push({ folderName: 'Programme & Notions-clés', items: currentItems });
-      }
-
-      return sections;
-    }
+    // 4. Charger et afficher les cours depuis la base Supabase.
+    //    Le classement en matières / dossiers est partagé avec l'espace perso
+    //    (src/utils/courseTree.ts) pour que les deux pages montrent la même chose.
 
     function renderCoursesGrid(dbCourses: DbCourse[]) {
       const container = document.querySelector('.subjects-grid');
@@ -635,156 +582,18 @@ const subjectsList = subjects.map((s) => ({
         return;
       }
 
-      // Regrouper par matière
-      interface SubjectData {
-        name: string;
-        folders: Map<string, Array<{ id?: string; title: string; url?: string; ext: string; rawCourse?: DbCourse; content?: string }>>;
-      }
-
-      const subjectsMap = new Map<string, SubjectData>();
-
-      dbCourses.forEach((c) => {
-        let isRootNote = false;
-
-        // Détection des notes non affiliées (à la racine)
-        if (c.tags && c.tags.includes('note')) {
-          const hasRealSubject = c.tags.some(
-            (t) =>
-              !t.startsWith('icon:') &&
-              t !== 'note' &&
-              t !== 'Sans matière' &&
-              t !== 'Notes libres' &&
-              t !== 'Université' &&
-              t !== 'Dossier importé' &&
-              t !== 'Matière' &&
-              t !== 'Supports de cours' &&
-              t !== 'Fiches de révisions' &&
-              t !== 'CM' &&
-              t !== 'TD' &&
-              t !== 'Documents racines'
-          );
-          if (!hasRealSubject) {
-            isRootNote = true;
-          }
-        }
-
-        let subject = '';
-        if (isRootNote) {
-          subject = 'Notes';
-        } else {
-          if (c.tags && c.tags.length > 0) {
-            const cleanTags = c.tags.filter(
-              (t) =>
-                t !== 'Université' &&
-                t !== 'Dossier importé' &&
-                t !== 'Matière' &&
-                t !== 'Supports de cours' &&
-                t !== 'note' &&
-                !t.startsWith('icon:') &&
-                t !== 'Sans matière' &&
-                t !== 'Notes libres' &&
-                t !== 'Fiches de révisions' &&
-                t !== 'CM' &&
-                t !== 'TD' &&
-                t !== 'Documents racines'
-            );
-            if (cleanTags.length > 0) subject = cleanTags[0];
-          }
-          if (!subject && c.tags && c.tags.includes('Matière') && c.title) subject = c.title;
-          subject = (subject || '').trim();
-          if (!subject) return;
-        }
-
-        if (!subjectsMap.has(subject)) {
-          subjectsMap.set(subject, { name: subject, folders: new Map() });
-        }
-        const sData = subjectsMap.get(subject)!;
-
-        if (isRootNote) {
-          const folder = 'Notes libres';
-          if (!sData.folders.has(folder)) {
-            sData.folders.set(folder, []);
-          }
-          sData.folders.get(folder)!.push({
-            id: c.id,
-            title: c.title || 'Sans titre',
-            ext: 'note',
-            rawCourse: c,
-            content: c.body_md,
-          });
-          return;
-        }
-
-        // Vérifier si c'est un module / conteneur de cours avec sous-dossiers markdown
-        const parsedSections = parseMarkdownSubfolders(c.body_md);
-
-        if (parsedSections.length > 0) {
-          parsedSections.forEach((sec) => {
-            if (!sData.folders.has(sec.folderName)) {
-              sData.folders.set(sec.folderName, []);
-            }
-            const fList = sData.folders.get(sec.folderName)!;
-            sec.items.forEach((item) => {
-              const existingIdx = fList.findIndex((f) => f.title.toLowerCase() === item.title.toLowerCase());
-              if (existingIdx === -1) {
-                fList.push({
-                  id: c.id,
-                  title: item.title,
-                  url: item.url,
-                  ext: item.ext,
-                  rawCourse: c,
-                  content: item.content,
-                });
-              }
-            });
-          });
-        } else if (!c.tags?.includes('Matière')) {
-          // Document ou note individuel
-          let folder = 'Fiches & Notes';
-          if (c.tags && c.tags.length > 1) {
-            const cleanTags = c.tags.filter((t) => t !== 'Université' && t !== 'Dossier importé' && t !== 'Matière' && t !== subject);
-            if (cleanTags.length > 0) folder = cleanTags[0];
-          }
-          if (!sData.folders.has(folder)) {
-            sData.folders.set(folder, []);
-          }
-          const isDataUrl = c.body_md && c.body_md.startsWith('data:');
-          let ext = isDataUrl ? 'doc' : 'note';
-          const extMatch = c.title.match(/\.([a-zA-Z0-9]+)$/);
-          if (extMatch) ext = extMatch[1].toLowerCase();
-
-          const fList = sData.folders.get(folder)!;
-          const existingIdx = fList.findIndex((f) => f.title.toLowerCase() === c.title.toLowerCase());
-          const entry = {
-            id: c.id,
-            title: c.title,
-            ext,
-            rawCourse: c,
-            content: c.body_md,
-          };
-          if (existingIdx !== -1) {
-            // Préférer l'entrée qui contient la DataURL directe du fichier
-            if (isDataUrl || !fList[existingIdx].rawCourse?.body_md?.startsWith('data:')) {
-              fList[existingIdx] = entry;
-            }
-          } else {
-            fList.push(entry);
-          }
-        }
-      });
+      // Regroupement partagé avec l'espace perso (src/utils/courseTree.ts)
+      const subjectsMap = groupCoursesBySubject(dbCourses);
 
       let totalSubjectCount = subjectsMap.size;
       let totalDocCount = 0;
 
       // Trier les matières (en plaçant 'Notes' au début si présente)
-      const sortedSubjects = Array.from(subjectsMap.values()).sort((a, b) => {
-        if (a.name === 'Notes') return -1;
-        if (b.name === 'Notes') return 1;
-        return a.name.localeCompare(b.name, 'fr');
-      });
+      const sortedSubjects = sortSubjects(subjectsMap.values());
+
 
       sortedSubjects.forEach((sData) => {
-        const subject = sData.name;
+        const subject = sData.subject;
         const slugId = subject
           .toLowerCase()
           .normalize('NFD')
@@ -883,10 +692,7 @@ const subjectsList = subjects.map((s) => ({
         if (!tree) return;
 
         // Trier les dossiers selon l'ordre académique (CM, TD, TP, Fiches, etc.)
-        const sortedFolderNames = Array.from(sData.folders.keys()).sort((a, b) => {
-          const scoreDiff = getFolderSortScore(a) - getFolderSortScore(b);
-          return scoreDiff !== 0 ? scoreDiff : a.localeCompare(b);
-        });
+        const sortedFolderNames = sortFolders(sData);
 
         let subjectDocCount = 0;
 
