@@ -1135,6 +1135,15 @@ const localPresetCourses = getCourses().map((s) => {
     btnImportPreset?.addEventListener('click', importLocalPresetCourses);
     btnImportPresetEmpty?.addEventListener('click', importLocalPresetCourses);
 
+    // Le cache local du navigateur plafonne vers 5 Mo : quand l'écriture échoue,
+    // l'interface montre des données périmées. On le dit au lieu de l'avaler.
+    window.addEventListener('marges:cache-full', () => {
+      notify(
+        "Mémoire du navigateur pleine : la liste locale des cours n'a pas pu être enregistrée. Supprimez d'anciens documents importés pour libérer de la place.",
+        true
+      );
+    });
+
     // Importation d'un dossier complet depuis le disque (arborescence automatique et stockage des PDF)
     async function handleFolderUpload(fileList: FileList | null) {
       if (!fileList || fileList.length === 0) return;

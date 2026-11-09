@@ -30,7 +30,7 @@ const subjectsList = subjects.map((s) => ({
           <p class="courses-motto">Supports de cours, énoncés de TD et fiches de révisions.</p>
         </div>
         <div class="courses-hero-actions">
-          <button type="button" class="btn btn--sm" id="btn-sync-cloud-files" title="Synchroniser vos documents locaux vers Supabase Storage">
+          <button type="button" class="btn btn--sm" id="btn-sync-cloud-files" title="Envoie vers le cloud les documents enregistrés sur cet appareil. Cette vérification est faite automatiquement après chaque import : le bouton sert à la relancer.">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <span id="sync-cloud-label">Sync Cloud</span>
           </button>
@@ -338,33 +338,71 @@ const subjectsList = subjects.map((s) => ({
     });
 
     const btnCancelFolder = document.getElementById('btn-cancel-folder');
-    const btnStartFolderImport = document.getElementById('btn-start-folder-import');
+    const btnStartFolderImport = document.getElementById('btn-start-folder-import') as HTMLButtonElement | null;
     const courseFolderInput = document.getElementById('course-folder-input') as HTMLInputElement | null;
     const folderImportStatus = document.getElementById('folder-import-status');
 
-    btnCancelFolder?.addEventListener('click', () => modal?.close());
-    btnStartFolderImport?.addEventListener('click', () => {
-      courseFolderInput?.click();
+    // Sélectionner un dossier ne lance plus l'import : on mémorise le choix et on
+    // attend le clic sur « Lancer l'importation ». Avant, le bouton se contentait de
+    // rouvrir le sélecteur de fichiers et l'import partait à la sélection.
+    let pendingFolderFiles: File[] = [];
+
+    function setFolderImportState(count: number) {
+      if (btnStartFolderImport) btnStartFolderImport.disabled = count === 0;
+      if (folderImportStatus) {
+        if (count > 0) {
+          folderImportStatus.style.display = 'block';
+          folderImportStatus.textContent = `${count} fichier${count > 1 ? 's' : ''} sélectionné${count > 1 ? 's' : ''} — cliquez sur « Lancer l'importation ».`;
+        } else {
+          folderImportStatus.style.display = 'none';
+          folderImportStatus.textContent = '';
+        }
+      }
+    }
+
+    setFolderImportState(0);
+
+    btnCancelFolder?.addEventListener('click', () => {
+      pendingFolderFiles = [];
+      if (courseFolderInput) courseFolderInput.value = '';
+      setFolderImportState(0);
+      modal?.close();
     });
 
-    courseFolderInput?.addEventListener('change', async () => {
-      if (!courseFolderInput.files || courseFolderInput.files.length === 0) return;
+    courseFolderInput?.addEventListener('change', () => {
+      pendingFolderFiles = courseFolderInput.files ? Array.from(courseFolderInput.files) : [];
+      setFolderImportState(pendingFolderFiles.length);
+    });
+
+    btnStartFolderImport?.addEventListener('click', async () => {
+      if (pendingFolderFiles.length === 0) {
+        if (folderImportStatus) {
+          folderImportStatus.style.display = 'block';
+          folderImportStatus.textContent = "Choisissez d'abord un dossier ci-dessus.";
+        }
+        return;
+      }
+
+      const filesToImport = pendingFolderFiles.slice();
+      if (btnStartFolderImport) btnStartFolderImport.disabled = true;
+
       try {
         if (folderImportStatus) {
           folderImportStatus.style.display = 'block';
           folderImportStatus.textContent = 'Importation des documents en cours...';
         }
-        const res = await processFolderUpload(courseFolderInput.files, (msg) => {
+        const res = await processFolderUpload(filesToImport, (msg) => {
           if (folderImportStatus) folderImportStatus.textContent = msg;
         });
         showToast(`${res.subjectCount} matière(s) et ${res.fileCount} fichier(s) importés !`);
+        pendingFolderFiles = [];
+        if (courseFolderInput) courseFolderInput.value = '';
+        setFolderImportState(0);
         modal?.close();
-        courseFolderInput.value = '';
-        if (folderImportStatus) folderImportStatus.style.display = 'none';
         await loadAndRenderSupabaseCourses();
       } catch (err: any) {
         showToast('Erreur importation dossier : ' + err.message, 'error');
-        if (folderImportStatus) folderImportStatus.style.display = 'none';
+        setFolderImportState(pendingFolderFiles.length);
       }
     });
 
@@ -379,6 +417,12 @@ const subjectsList = subjects.map((s) => ({
       panels.forEach((p) => {
         p.classList.toggle('active', p.getAttribute('data-panel') === defaultTab);
       });
+
+      // Une sélection de dossier abandonnée (fermeture par ✕) ne doit pas rester
+      // en mémoire et surprendre au prochain import.
+      pendingFolderFiles = [];
+      if (courseFolderInput) courseFolderInput.value = '';
+      setFolderImportState(0);
 
       if (modal) modal.showModal();
     }
@@ -1000,30 +1044,54 @@ const subjectsList = subjects.map((s) => ({
     const syncCloudLabel = document.getElementById('sync-cloud-label');
     let isSyncing = false;
 
+    // Le cache local a une limite d'environ 5 Mo : au-delà, l'écriture échoue et
+    // l'interface affiche des données périmées. Autant le dire.
+    window.addEventListener('marges:cache-full', () => {
+      notifyToast(
+        "Mémoire du navigateur pleine : la liste locale des cours n'a pas pu être enregistrée. Supprimez d'anciens documents importés pour libérer de la place.",
+        'error'
+      );
+    });
+
     async function triggerCloudSync(interactive = false) {
       if (isSyncing) return;
       isSyncing = true;
-      if (syncCloudLabel) syncCloudLabel.textContent = 'Sync...';
+      if (syncCloudLabel) syncCloudLabel.textContent = 'Vérification...';
+
+      // Un téléversement qui ne répond jamais laissait le bouton bloqué pour de bon
+      // (isSyncing restait vrai). On borne l'attente.
+      const watchdog = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('délai dépassé')), 60_000);
+      });
 
       try {
-        const res = await syncLocalFilesToSupabaseStorage((progress) => {
-          if (syncCloudLabel) {
-            syncCloudLabel.textContent = `${progress.current}/${progress.total}`;
-          }
-        });
+        const res = await Promise.race([
+          syncLocalFilesToSupabaseStorage((progress) => {
+            if (syncCloudLabel) {
+              syncCloudLabel.textContent = `${progress.current} / ${progress.total}`;
+            }
+          }),
+          watchdog,
+        ]);
 
         if (interactive) {
-          if (res.syncedCount > 0) {
-            showToast(`${res.syncedCount} fichier(s) sauvegardé(s) dans le cloud !`);
-          } else if (res.alreadyCount > 0) {
-            showToast(`Vos ${res.alreadyCount} fichiers sont déjà sauvegardés dans le cloud.`);
-          } else if (res.totalCount === 0) {
-            showToast('Aucun fichier local à synchroniser.');
+          const parts: string[] = [];
+          if (res.syncedCount > 0) parts.push(`${res.syncedCount} envoyé${res.syncedCount > 1 ? 's' : ''}`);
+          if (res.alreadyCount > 0) parts.push(`${res.alreadyCount} déjà présent${res.alreadyCount > 1 ? 's' : ''}`);
+          if (res.totalCount === 0 && res.errors.length === 0) parts.push('aucun fichier local');
+          if (res.errors.length > 0) parts.push(`${res.errors.length} non envoyé${res.errors.length > 1 ? 's' : ''}`);
+
+          showToast(
+            parts.length > 0 ? `Cloud : ${parts.join(', ')}.` : 'Cloud à jour.',
+            res.errors.length > 0 ? 'info' : 'success'
+          );
+          if (res.errors.length > 0) {
+            console.warn('[StorageSync] Fichiers ignorés:', res.errors);
           }
         }
       } catch (err: any) {
         if (interactive) {
-          showToast(`Erreur synchronisation : ${err.message || err}`);
+          showToast(`Erreur synchronisation : ${err.message || err}`, 'error');
         }
       } finally {
         isSyncing = false;

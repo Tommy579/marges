@@ -138,14 +138,14 @@ import Icon from './Icon.astro';
           multiple
           class="input-file"
         />
-        <span class="help-text meta">Tous les documents PDF et supports détectés seront sauvegardés dans votre mémoire locale sécurisée pour lecture immédiate.</span>
+        <span class="help-text meta">Choisissez le dossier : rien n'est envoyé avant le clic sur « Lancer l'importation ». Les documents PDF et les supports détectés seront enregistrés dans votre mémoire locale sécurisée, puis synchronisés vers votre espace.</span>
       </div>
 
       <div id="folder-import-status" class="meta" style="display: none; padding: 0.5rem 0; font-weight: 500; color: var(--accent);"></div>
 
       <div class="modal-actions">
         <button type="button" class="btn btn--sm" id="btn-cancel-folder">Annuler</button>
-        <button type="button" class="btn btn--primary btn--sm" id="btn-start-folder-import">Lancer l'importation</button>
+        <button type="button" class="btn btn--primary btn--sm" id="btn-start-folder-import" disabled>Lancer l'importation</button>
       </div>
     </div>
 

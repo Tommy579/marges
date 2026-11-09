@@ -297,6 +297,12 @@ export function saveLocalUserCourses(userId: string, courses: DbCourse[]): void 
     localStorage.setItem(getUserCoursesStorageKey(userId), JSON.stringify(courses));
   } catch (err) {
     console.warn('[Courses Cache] Erreur sauvegarde locale:', err);
+    // Le cache local sert à l'affichage immédiat : s'il ne peut plus être écrit,
+    // l'utilisateur voit des données périmées sans explication. On le signale
+    // plutôt que de laisser un console.warn muet.
+    try {
+      window.dispatchEvent(new CustomEvent('marges:cache-full', { detail: { userId } }));
+    } catch {}
   }
 }
 

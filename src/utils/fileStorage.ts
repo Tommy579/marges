@@ -306,8 +306,29 @@ export async function saveDocumentBlob(key: string, blob: Blob | File): Promise<
 }
 
 /**
+ * Clé canonique d'un document dans IndexedDB.
+ *
+ * Auparavant, chaque fichier était écrit sous six clés (avec et sans utilisateur,
+ * avec et sans dossier, plus le nom brut). Résultat : six fois le même Blob en base
+ * locale, et la synchronisation comptait chaque fichier plusieurs fois en
+ * téléversant des copies à des emplacements faux. `findDocumentBlob` sait toujours
+ * relire les anciennes clés, donc une seule clé suffit.
+ */
+export function buildDocumentKey(
+  userId: string | undefined,
+  subject: string | undefined,
+  folder: string | undefined,
+  fileName: string
+): string {
+  return ['doc', userId || '', subject || '', folder || '', fileName]
+    .map((part) => String(part ?? '').trim())
+    .join(':')
+    .toLowerCase();
+}
+
+/**
  * Sauvegarde complète et unifiée d'un fichier :
- * 1) Enregistre localement dans IndexedDB sous toutes les variantes de clés usuelles (pour accès 0 ms immédiat).
+ * 1) Enregistre localement dans IndexedDB sous sa clé canonique (accès 0 ms immédiat).
  * 2) Téléverse de manière asynchrone dans le bucket Supabase Storage si un utilisateur est connecté.
  */
 export async function saveDocumentFile(
@@ -325,24 +346,15 @@ export async function saveDocumentFile(
   const cleanFolder = (options.folder || '').trim();
   const fileName = options.fileName.trim();
 
-  // 1. Sauvegarde dans IndexedDB sous les clés canoniques et leurs alias
-  const candidateKeys = [
-    `doc:${userId}:${cleanSubject}:${cleanFolder}:${fileName}`,
-    `doc:${userId}:${fileName}`,
-    `doc:${cleanSubject}:${cleanFolder}:${fileName}`,
-    `doc:${fileName}`,
-    `${cleanSubject}/${cleanFolder}/${fileName}`,
-    fileName,
-  ];
+  // 1. Sauvegarde dans IndexedDB sous sa clé canonique
+  const canonicalKey = buildDocumentKey(userId, cleanSubject, cleanFolder, fileName);
 
   try {
     const db = await openDocDatabase();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
-      candidateKeys.forEach((k) => {
-        store.put(blobOrFile, k.toLowerCase());
-      });
+      store.put(blobOrFile, canonicalKey);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
@@ -679,6 +691,83 @@ export interface StorageSyncResult {
   errors: string[];
 }
 
+export interface SyncableFile {
+  subject?: string;
+  folder?: string;
+  fileName: string;
+  blob: Blob;
+}
+
+/**
+ * Détermine quels fichiers locaux peuvent être téléversés vers le bucket, et où.
+ *
+ * Fonction pure (aucun accès DOM ni réseau) pour être testable : c'est ici que se
+ * jouaient les doublons de l'ancien code, qui produisait jusqu'à trois
+ * téléversements par fichier dont deux à des emplacements faux.
+ *
+ * `knownSubjects` sert d'arbitre : les anciennes clés à quatre segments
+ * (`doc:droit:cm:fichier.pdf`) sont ambiguës — `parseDocKey` y lit le dossier comme
+ * une matière — et produisaient un chemin parasite (`<user>/cm/fichier.pdf`).
+ */
+export function selectSyncableFiles(
+  entries: Array<{ key: string; blob: Blob }>,
+  fileToCourseMeta: Map<string, { subject: string; folder: string }>,
+  knownSubjects?: Set<string>
+): { files: SyncableFile[]; orphans: string[] } {
+  const subjects = knownSubjects && knownSubjects.size > 0
+    ? new Set(Array.from(knownSubjects).map((s) => s.toLowerCase()))
+    : null;
+
+  const isKnownSubject = (value?: string) => {
+    if (!value) return false;
+    if (!subjects) return true;
+    return subjects.has(value.toLowerCase());
+  };
+
+  // Identité d'un fichier = matière + dossier + nom. Les anciennes clés sans matière
+  // (doc:<fichier>, <fichier>, doc:<user>:<fichier>) sont regroupées à part sous
+  // « orphelin », puis écartées dès qu'une entrée qualifiée porte le même nom.
+  const qualifiés = new Map<string, SyncableFile>();
+  const orphelins = new Map<string, SyncableFile>();
+
+  for (const entry of entries) {
+    const parsed = parseDocKey(entry.key);
+    if (!parsed || !parsed.fileName || !parsed.fileName.includes('.')) continue;
+
+    const originalName = (entry.blob as any).name || parsed.fileName;
+    const lowerName = originalName.toLowerCase();
+
+    let subject = isKnownSubject(parsed.subject) ? parsed.subject : undefined;
+    let folder = subject ? parsed.folder : undefined;
+
+    // Corrélation par le markdown du cours : c'est la source la plus fiable, le nom
+    // de fichier y figure explicitement.
+    if (fileToCourseMeta.has(lowerName)) {
+      const meta = fileToCourseMeta.get(lowerName)!;
+      subject = meta.subject;
+      folder = meta.folder;
+    }
+
+    const item: SyncableFile = { subject, folder, fileName: originalName, blob: entry.blob };
+
+    if (subject) {
+      const key = `${subject.toLowerCase()}|${(folder || '').toLowerCase()}|${lowerName}`;
+      if (!qualifiés.has(key)) qualifiés.set(key, item);
+    } else if (!orphelins.has(lowerName)) {
+      orphelins.set(lowerName, item);
+    }
+  }
+
+  const nomsQualifiés = new Set(
+    Array.from(qualifiés.values()).map((f) => f.fileName.toLowerCase())
+  );
+  const vraisOrphelins = Array.from(orphelins.entries())
+    .filter(([nom]) => !nomsQualifiés.has(nom))
+    .map(([, item]) => item.fileName);
+
+  return { files: Array.from(qualifiés.values()), orphans: vraisOrphelins };
+}
+
 /**
  * Migration / Synchronisation complète des fichiers déjà présents dans l'IndexedDB locale vers Supabase Storage.
  * Parcourt les documents stockés sur la machine, les corrèle avec les cours enregistrés et les téléverse
@@ -721,42 +810,20 @@ export async function syncLocalFilesToSupabaseStorage(
     }
   });
 
-  // Dédoublonnage des entrées IndexedDB
-  const filesMap = new Map<string, { subject?: string; folder?: string; fileName: string; blob: Blob }>();
-
-  for (const entry of entries) {
-    const parsed = parseDocKey(entry.key);
-    if (!parsed || !parsed.fileName || !parsed.fileName.includes('.')) continue;
-
-    // Préférer le nom de fichier avec sa casse d'origine si l'objet Blob est un File
-    const originalName = (entry.blob as any).name || parsed.fileName;
-    const lowerName = originalName.toLowerCase();
-
-    let subject = parsed.subject;
-    let folder = parsed.folder;
-
-    if (!subject && fileToCourseMeta.has(lowerName)) {
-      const meta = fileToCourseMeta.get(lowerName)!;
-      subject = meta.subject;
-      folder = meta.folder;
-    }
-
-    const uniqueId = `${subject || ''}/${folder || ''}/${lowerName}`;
-    if (!filesMap.has(uniqueId)) {
-      filesMap.set(uniqueId, {
-        subject,
-        folder,
-        fileName: originalName,
-        blob: entry.blob,
-      });
-    }
-  }
-
-  const uniqueFiles = Array.from(filesMap.values());
+  // Dédoublonnage par nom de fichier réel : un même fichier peut exister sous
+  // plusieurs clés IndexedDB (anciennes écritures multi-clés). On garde l'entrée qui
+  // porte la matière et le dossier, et on ne téléverse qu'une fois, au bon endroit.
+  const { files: uniqueFiles, orphans } = selectSyncableFiles(
+    entries,
+    fileToCourseMeta,
+    new Set(userCourses.map((c) => c.title).filter(Boolean))
+  );
   const totalCount = uniqueFiles.length;
   let syncedCount = 0;
   let alreadyCount = 0;
-  const errors: string[] = [];
+  // Un fichier sans matière ne peut pas être rangé : on le signale au lieu de le
+  // déposer à la racine du bucket, ce que faisait l'ancien code.
+  const errors: string[] = orphans.map((name) => `${name}: matière inconnue, non téléversé`);
 
   for (let i = 0; i < uniqueFiles.length; i++) {
     const item = uniqueFiles[i];
