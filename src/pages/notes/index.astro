@@ -1,6 +1,7 @@
 ---
 import Base from '../../layouts/Base.astro';
 import Icon from '../../components/Icon.astro';
+import AiDraftModal from '../../components/AiDraftModal.astro';
 import { getCourses } from '../../utils/courses';
 import { url } from '../../utils/url';
 
@@ -135,6 +136,16 @@ const subjectsList = subjects.map((s) => ({
           </div>
 
           <div class="topbar-actions">
+            <button
+              type="button"
+              class="btn btn--sm btn-ai-draft"
+              id="btn-open-ai-draft"
+              title="Rédiger un cours complet à partir de vos notes (IA)"
+              aria-label="Rédiger le cours"
+            >
+              <Icon name="sparkle" size={13} />
+              <span>Rédiger</span>
+            </button>
             <button
               type="button"
               class="btn-icon"
@@ -435,6 +446,9 @@ const subjectsList = subjects.map((s) => ({
       </div>
     </main>
   </div>
+
+  <!-- Modale d'assistance à la rédaction de cours par IA -->
+  <AiDraftModal />
 </Base>
 
 <style>
@@ -911,6 +925,40 @@ const subjectsList = subjects.map((s) => ({
     gap: 0.2rem;
   }
 
+  .btn-ai-draft {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: var(--r-sm);
+    background: var(--soft);
+    border: 1px solid var(--line);
+    color: var(--accent);
+    font-family: var(--font-ui);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    margin-right: 0.25rem;
+  }
+
+  .btn-ai-draft:hover {
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+    border-color: var(--accent);
+  }
+
+  @media (max-width: 48rem) {
+    .btn-ai-draft span {
+      display: none;
+    }
+    .btn-ai-draft {
+      padding: 0.3rem 0.45rem;
+      margin-right: 0.1rem;
+    }
+  }
+
   .btn-icon {
     display: inline-grid;
     place-items: center;
@@ -1249,6 +1297,7 @@ const subjectsList = subjects.map((s) => ({
   .notion-editor-split.mode-preview .preview-pane {
     display: block !important;
     width: 100%;
+    overflow: visible;
   }
 
   .editor-pane {
@@ -1273,7 +1322,7 @@ const subjectsList = subjects.map((s) => ({
   }
 
   .preview-pane {
-    overflow-y: auto;
+    overflow: visible;
   }
 
   /* Rendu Markdown façon Notion (styles de blocs partagés dans global.css via .notion-rendered-flow) */
@@ -1570,12 +1619,19 @@ const subjectsList = subjects.map((s) => ({
     fetchUnifiedNotes,
     saveUnifiedNote,
     deleteUnifiedNote,
+    generateNoteId,
     renderNotionMarkdown,
     computeNoteStats,
     type NoteItem,
   } from '../../utils/notes';
   import { getUserCoursesImmediate } from '../../utils/supabase';
   import { esc } from '../../utils/escape';
+  import { toast } from '../../utils/toast';
+  import {
+    generateCourseDraft,
+    getAiSettings,
+    type DraftMode,
+  } from '../../utils/aiDraft';
 
   function initNotesApp() {
     const root = document.querySelector('[data-notes-workspace]') as HTMLElement | null;
@@ -1656,6 +1712,7 @@ const subjectsList = subjects.map((s) => ({
     let autoSaveTimer: any = null;
     let isSaving = false;
     let slashDismissedPos: number | null = null;
+    const unsavedDraftIds = new Set<string>();
 
     // Gestion du style de police (Sans-serif par défaut vs Serif)
     // La police est enregistrée sur la note elle-même (tag « font: »), pour la suivre
@@ -1914,7 +1971,7 @@ const subjectsList = subjects.map((s) => ({
           if (matchingRootNotes.length === 0) {
             const emptyItem = document.createElement('div');
             emptyItem.className = 'subject-empty-hint';
-            emptyItem.innerHTML = `<span>Aucune note libre.</span> <button type="button" class="btn-inline-new" data-sub="">+ Rédiger</button>`;
+            emptyItem.innerHTML = `<span>Aucune note libre.</span> <button type="button" class="btn-inline-new" data-sub="">+ Écrire</button>`;
             emptyItem.querySelector('.btn-inline-new')?.addEventListener('click', () => createNewNote(''));
             rootListEl.appendChild(emptyItem);
           } else {
@@ -2005,7 +2062,7 @@ const subjectsList = subjects.map((s) => ({
             if (matchingNotes.length === 0) {
               const emptyItem = document.createElement('div');
               emptyItem.className = 'subject-empty-hint';
-              emptyItem.innerHTML = `<span>Aucune note.</span> <button type="button" class="btn-inline-new" data-sub="${esc(subjectName)}">+ Rédiger</button>`;
+              emptyItem.innerHTML = `<span>Aucune note.</span> <button type="button" class="btn-inline-new" data-sub="${esc(subjectName)}">+ Écrire</button>`;
               emptyItem.querySelector('.btn-inline-new')?.addEventListener('click', () => createNewNote(subjectName));
               listEl.appendChild(emptyItem);
             } else {
@@ -2127,6 +2184,7 @@ const subjectsList = subjects.map((s) => ({
       const fontVal: 'serif' | 'sans' = docCanvas?.classList.contains('font-serif') ? 'serif' : 'sans';
 
       if (
+        !unsavedDraftIds.has(target.id) &&
         target.title === titleVal &&
         target.body_md === bodyVal &&
         target.subject === subjectVal &&
@@ -2136,6 +2194,7 @@ const subjectsList = subjects.map((s) => ({
         return;
       }
 
+      unsavedDraftIds.delete(target.id);
       target.title = titleVal;
       target.body_md = bodyVal;
       target.subject = subjectVal;
@@ -2193,10 +2252,10 @@ const subjectsList = subjects.map((s) => ({
     }
 
     // 7. Créer une nouvelle note (non affiliée par défaut)
-    function createNewNote(customSubject?: string) {
+    function createNewNote(customSubject?: string, persistImmediate = true) {
       const defaultSubject = customSubject || '';
       const newNote: NoteItem = {
-        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'note_' + Date.now(),
+        id: generateNoteId(),
         title: 'Sans titre',
         body_md: '',
         subject: defaultSubject,
@@ -2207,11 +2266,15 @@ const subjectsList = subjects.map((s) => ({
       };
 
       notes.unshift(newNote);
-      saveUnifiedNote(newNote); // Sauvegarde non bloquante en tâche de fond
+      if (persistImmediate) {
+        saveUnifiedNote(newNote);
+      } else {
+        unsavedDraftIds.add(newNote.id);
+      }
       refreshSubjectsDropdown(defaultSubject);
       renderNotesTree(searchInput?.value || '');
       loadNoteIntoCanvas(newNote.id);
-      noteTitle.focus();
+      if (persistImmediate) noteTitle.focus();
     }
 
     // 8. Écouteurs d'édition en direct
@@ -2575,13 +2638,16 @@ const subjectsList = subjects.map((s) => ({
 
       if (confirm(`Supprimer définitivement la note « ${target.title} » ?`)) {
         const idToDelete = target.id;
+        const wasDraft = unsavedDraftIds.delete(idToDelete);
         notes = notes.filter((n) => n.id !== idToDelete);
-        deleteUnifiedNote(idToDelete);
+        if (!wasDraft) {
+          deleteUnifiedNote(idToDelete);
+        }
 
         if (notes.length > 0) {
           loadNoteIntoCanvas(notes[0].id);
         } else {
-          createNewNote();
+          createNewNote('', false);
         }
         renderNotesTree(searchInput?.value || '');
       }
@@ -2609,6 +2675,177 @@ const subjectsList = subjects.map((s) => ({
     // 16. Bouton Nouvelle Note
     btnCreateNote?.addEventListener('click', () => {
       createNewNote();
+    });
+
+    // 16bis. Assistant de rédaction de cours par IA
+    const modalAiDraft = document.getElementById('modal-ai-draft') as HTMLDialogElement | null;
+    const btnOpenAiDraft = document.getElementById('btn-open-ai-draft');
+    const btnCloseAiModal = document.getElementById('btn-close-ai-modal');
+    const aiSourceTitle = document.getElementById('ai-source-title');
+    const aiSourceWords = document.getElementById('ai-source-words');
+    const aiEngineLabel = document.getElementById('ai-engine-label');
+    const btnTriggerAi = document.getElementById('btn-trigger-ai-generation');
+    const aiStepConfig = document.getElementById('ai-step-config');
+    const aiStepLoading = document.getElementById('ai-step-loading');
+    const aiStepResult = document.getElementById('ai-step-result');
+    const aiResultStats = document.getElementById('ai-result-stats');
+    const aiResultPreview = document.getElementById('ai-result-preview');
+    const btnAiRetry = document.getElementById('btn-ai-retry');
+    const btnApplyAsNewNote = document.getElementById('btn-apply-as-new-note');
+    const btnApplyAppend = document.getElementById('btn-apply-append');
+    const btnApplyReplace = document.getElementById('btn-apply-replace');
+
+    let lastGeneratedDraft = '';
+    let lastGeneratedDraftMode: DraftMode = 'cours';
+
+    function openAiModal() {
+      if (!modalAiDraft) return;
+      const currentBody = noteBody?.value || '';
+      const stats = computeNoteStats(currentBody);
+
+      if (stats.words < 5) {
+        toast('Ajoutez au moins quelques mots-clés ou notes avant de lancer la rédaction.', 'info');
+        return;
+      }
+
+      if (aiSourceTitle) {
+        aiSourceTitle.textContent = noteTitle?.value.trim() || 'Sans titre';
+      }
+      if (aiSourceWords) {
+        aiSourceWords.textContent = `${stats.words} mot${stats.words > 1 ? 's' : ''}`;
+      }
+
+      const settings = getAiSettings();
+      if (aiEngineLabel) {
+        if (settings.provider === 'gemini' && settings.geminiKey) {
+          aiEngineLabel.textContent = 'Moteur : Google Gemini (clé personnelle)';
+        } else if (settings.provider === 'groq' && settings.groqKey) {
+          aiEngineLabel.textContent = 'Moteur : Groq Llama 3.3 (clé personnelle)';
+        } else if (settings.provider === 'chrome') {
+          aiEngineLabel.textContent = 'Moteur : Chrome Gemini Nano (local)';
+        } else {
+          aiEngineLabel.textContent = 'Moteur : Puter.js (accès libre, 0 €)';
+        }
+      }
+
+      if (aiStepConfig) aiStepConfig.style.display = 'grid';
+      if (aiStepLoading) aiStepLoading.style.display = 'none';
+      if (aiStepResult) aiStepResult.style.display = 'none';
+
+      modalAiDraft.showModal();
+    }
+
+    btnOpenAiDraft?.addEventListener('click', openAiModal);
+    btnCloseAiModal?.addEventListener('click', () => modalAiDraft?.close());
+    modalAiDraft?.addEventListener('click', (e) => {
+      if (e.target === modalAiDraft) modalAiDraft.close();
+    });
+
+    // Choix du format (cartes radio)
+    const formatCards = document.querySelectorAll<HTMLElement>('.format-card');
+    formatCards.forEach((card) => {
+      card.addEventListener('click', () => {
+        formatCards.forEach((c) => c.classList.remove('active'));
+        card.classList.add('active');
+        const radio = card.querySelector<HTMLInputElement>('input[type="radio"]');
+        if (radio) radio.checked = true;
+      });
+    });
+
+    async function executeAiGeneration() {
+      const checkedRadio = document.querySelector<HTMLInputElement>('input[name="ai-draft-format"]:checked');
+      const mode: DraftMode = (checkedRadio?.value as DraftMode) || 'cours';
+      lastGeneratedDraftMode = mode;
+
+      if (aiStepConfig) aiStepConfig.style.display = 'none';
+      if (aiStepLoading) aiStepLoading.style.display = 'grid';
+      if (aiStepResult) aiStepResult.style.display = 'none';
+
+      try {
+        const result = await generateCourseDraft({
+          title: noteTitle?.value.trim() || 'Sans titre',
+          notes: noteBody?.value || '',
+          mode,
+        });
+
+        lastGeneratedDraft = result.text;
+        const genStats = computeNoteStats(result.text);
+
+        if (aiResultStats) {
+          aiResultStats.textContent = `${genStats.words} mots rédigés via ${result.providerUsed}`;
+        }
+        if (aiResultPreview) {
+          aiResultPreview.innerHTML = renderNotionMarkdown(result.text);
+        }
+
+        if (aiStepLoading) aiStepLoading.style.display = 'none';
+        if (aiStepResult) aiStepResult.style.display = 'grid';
+      } catch (err: any) {
+        if (aiStepLoading) aiStepLoading.style.display = 'none';
+        if (aiStepConfig) aiStepConfig.style.display = 'grid';
+        toast(err?.message || 'Erreur lors de la rédaction.', 'error', 4500);
+      }
+    }
+
+    btnTriggerAi?.addEventListener('click', executeAiGeneration);
+    btnAiRetry?.addEventListener('click', executeAiGeneration);
+
+    // Option 1 : Créer une nouvelle note de cours
+    btnApplyAsNewNote?.addEventListener('click', () => {
+      if (!lastGeneratedDraft) return;
+      const currentTitle = noteTitle?.value.trim() || 'Sans titre';
+      const prefix = lastGeneratedDraftMode === 'cours' ? 'Cours' : 'Fiche';
+      const newTitle = `${prefix} : ${currentTitle}`;
+
+      const subj = propSubjectSelect?.value || '';
+      let cat = propCategorySelect?.value || 'Fiches de révisions';
+      if (cat === '__new__' && propCustomCategory) {
+        cat = propCustomCategory.value.trim() || 'Fiches de révisions';
+      }
+
+      const newNote: NoteItem = {
+        id: generateNoteId(),
+        title: newTitle,
+        body_md: lastGeneratedDraft,
+        subject: subj,
+        category: cat,
+        icon: lastGeneratedDraftMode === 'cours' ? 'book' : 'sparkle',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      notes.unshift(newNote);
+      saveUnifiedNote(newNote);
+      refreshSubjectsDropdown(newNote.subject);
+      renderNotesTree(searchInput?.value || '');
+      loadNoteIntoCanvas(newNote.id);
+
+      modalAiDraft?.close();
+      toast('Nouveau cours créé et enregistré avec succès.', 'success');
+    });
+
+    // Option 2 : Ajouter à la suite de la note actuelle
+    btnApplyAppend?.addEventListener('click', () => {
+      if (!lastGeneratedDraft) return;
+      const current = noteBody.value.trim();
+      const separator = current ? '\n\n---\n\n' : '';
+      noteBody.value = current + separator + lastGeneratedDraft;
+      noteBody.dispatchEvent(new Event('input'));
+
+      modalAiDraft?.close();
+      toast('Cours ajouté à la suite de vos notes.', 'success');
+    });
+
+    // Option 3 : Remplacer le texte actuel
+    btnApplyReplace?.addEventListener('click', () => {
+      if (!lastGeneratedDraft) return;
+      if (!confirm('Remplacer tout le contenu de cette note par le cours rédigé ?')) return;
+
+      noteBody.value = lastGeneratedDraft;
+      noteBody.dispatchEvent(new Event('input'));
+
+      modalAiDraft?.close();
+      toast('Contenu de la note remplacé avec succès.', 'success');
     });
 
     // 17. Recherche en direct
@@ -2659,7 +2896,7 @@ const subjectsList = subjects.map((s) => ({
 
     // 20. Chargement initial instantané (0 milliseconde de latence)
     function loadAppNotes() {
-      // 1. Chargement instantané depuis le cache local dédié
+      // 1. Chargement instantané depuis le cache local du compte actif
       notes = getLocalNotes();
       refreshSubjectsDropdown();
 
@@ -2667,8 +2904,8 @@ const subjectsList = subjects.map((s) => ({
       const reqId = urlParams.get('id');
 
       if (notes.length === 0) {
-        // Création synchrone sans bloquer l'UI
-        createNewNote('');
+        // Brouillon local non persisté tant que l'utilisateur n'écrit pas dedans
+        createNewNote('', false);
       } else {
         const found = reqId ? notes.find((n) => n.id === reqId) : null;
         loadNoteIntoCanvas(found ? found.id : notes[0].id);
@@ -2678,17 +2915,22 @@ const subjectsList = subjects.map((s) => ({
       // 2. Synchronisation transparente avec Supabase en arrière-plan
       fetchUnifiedNotes()
         .then((fresh) => {
+          const isEditing = document.activeElement === noteBody || document.activeElement === noteTitle;
           if (fresh && fresh.length > 0) {
             notes = fresh;
+            unsavedDraftIds.clear();
             refreshSubjectsDropdown();
             renderNotesTree(searchInput?.value || '');
             const targetId = reqId && notes.some((n) => n.id === reqId) ? reqId : currentNoteId;
-            if (targetId) {
-              const upToDate = notes.find((n) => n.id === targetId);
-              if (upToDate && document.activeElement !== noteBody && document.activeElement !== noteTitle) {
-                loadNoteIntoCanvas(upToDate.id);
-              }
+            const upToDate = (targetId && notes.find((n) => n.id === targetId)) || notes[0];
+            if (upToDate && !isEditing) {
+              loadNoteIntoCanvas(upToDate.id);
             }
+          } else if (fresh && fresh.length === 0 && !isEditing) {
+            // Aucun document distant pour ce compte : réinitialiser à un brouillon vierge non persisté
+            notes = [];
+            unsavedDraftIds.clear();
+            createNewNote('', false);
           }
         })
         .catch((syncErr) => {

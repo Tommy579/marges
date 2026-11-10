@@ -191,7 +191,6 @@ const subjectsList = subjects.map((s) => ({
   import {
     deleteUnifiedNote,
     getLocalNotes,
-    noteToDbCourse,
   } from '../../utils/notes';
   import { setupPdfViewerModal, openPdfViewer } from '../../utils/pdfViewer';
   import {
@@ -881,17 +880,8 @@ const subjectsList = subjects.map((s) => ({
     }
 
     async function loadAndRenderSupabaseCourses() {
-      // 1. Affichage instantané depuis le cache local (0 milliseconde de latence)
+      // 1. Affichage instantané depuis le cache local du compte actif
       const immediateCourses = getUserCoursesImmediate();
-      const localNotes = getLocalNotes();
-      const existingIds = new Set(immediateCourses.map((c) => c.id));
-      localNotes.forEach((n) => {
-        if (!existingIds.has(n.id)) {
-          immediateCourses.push(noteToDbCourse(n));
-          existingIds.add(n.id);
-        }
-      });
-
       cachedDbCourses = immediateCourses;
       renderCoursesGrid(immediateCourses);
 
@@ -899,13 +889,6 @@ const subjectsList = subjects.map((s) => ({
       try {
         const remoteCourses = await fetchUserCourses().catch(() => immediateCourses);
         if (remoteCourses) {
-          const remoteIds = new Set(remoteCourses.map((c) => c.id));
-          localNotes.forEach((n) => {
-            if (!remoteIds.has(n.id)) {
-              remoteCourses.push(noteToDbCourse(n));
-              remoteIds.add(n.id);
-            }
-          });
           cachedDbCourses = remoteCourses;
           renderCoursesGrid(remoteCourses);
         }
@@ -921,10 +904,7 @@ const subjectsList = subjects.map((s) => ({
     window.addEventListener('storage', (e) => {
       if (
         e.key &&
-        (e.key.startsWith('marges_user_courses_') ||
-          e.key === 'marges_deleted_courses_tombstones' ||
-          e.key === 'marges_notes_cache' ||
-          e.key === 'marges_guest_notes')
+        (e.key.startsWith('marges_user_courses_') || e.key.startsWith('marges_deleted_courses_'))
       ) {
         loadAndRenderSupabaseCourses();
       }

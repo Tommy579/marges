@@ -1,0 +1,443 @@
+---
+import Icon from './Icon.astro';
+import { url } from '../utils/url';
+---
+
+<dialog class="panel ai-draft-modal" id="modal-ai-draft" aria-labelledby="ai-draft-title">
+  <div class="modal-inner">
+    <header class="modal-header">
+      <div class="header-titles">
+        <span class="label-badge">
+          <Icon name="sparkle" size={12} />
+          Assistant de rédaction
+        </span>
+        <h2 class="modal-title" id="ai-draft-title">Rédiger un cours complet</h2>
+      </div>
+      <button type="button" class="btn-close" id="btn-close-ai-modal" aria-label="Fermer la fenêtre">✕</button>
+    </header>
+
+    <!-- Étape 1 : Configuration et choix du format -->
+    <div class="ai-config-step" id="ai-step-config">
+      <div class="source-summary">
+        <div class="source-icon">
+          <Icon name="file" size={16} />
+        </div>
+        <div class="source-info">
+          <span class="source-label">Note source :</span>
+          <strong class="source-title" id="ai-source-title">Sans titre</strong>
+          <span class="source-words meta" id="ai-source-words">0 mot</span>
+        </div>
+      </div>
+
+      <div class="format-choice-group" role="radiogroup" aria-label="Type de document souhaité">
+        <label class="format-card active" data-format="cours">
+          <input type="radio" name="ai-draft-format" value="cours" checked />
+          <div class="format-card-content">
+            <div class="format-card-head">
+              <Icon name="book" size={16} />
+              <strong>Cours universitaire complet</strong>
+            </div>
+            <p class="meta">
+              Développement approfondi avec introduction, plan en parties (I, II, III), encadrés de définitions et conclusion.
+            </p>
+          </div>
+        </label>
+
+        <label class="format-card" data-format="fiche">
+          <input type="radio" name="ai-draft-format" value="fiche" />
+          <div class="format-card-content">
+            <div class="format-card-head">
+              <Icon name="check-square" size={16} />
+              <strong>Fiche de synthèse &amp; révision</strong>
+            </div>
+            <p class="meta">
+              Concepts essentiels condensés, points de vigilance et liste de vérification pour s'auto-évaluer.
+            </p>
+          </div>
+        </label>
+      </div>
+
+      <div class="engine-badge" id="ai-engine-indicator">
+        <Icon name="sparkle" size={14} />
+        <span id="ai-engine-label">Moteur : Puter.js (accès libre, 0 €)</span>
+        <a href={url('/configuration/')} class="engine-link" title="Gérer vos clés d'API">Modifier</a>
+      </div>
+
+      <div class="modal-actions-primary">
+        <button type="button" class="btn btn--accent btn-full" id="btn-trigger-ai-generation">
+          <Icon name="sparkle" size={15} />
+          <span>Lancer la rédaction</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Étape 2 : Chargement en cours -->
+    <div class="ai-loading-step" id="ai-step-loading" style="display: none;">
+      <div class="loading-spinner"></div>
+      <p class="loading-title">Rédaction de votre cours en cours...</p>
+      <p class="loading-desc meta" id="ai-loading-details">
+        Développement des concepts, mise en forme du plan et structuration pédagogique.
+      </p>
+    </div>
+
+    <!-- Étape 3 : Résultat et insertion -->
+    <div class="ai-result-step" id="ai-step-result" style="display: none;">
+      <div class="result-header">
+        <div class="result-stats">
+          <Icon name="check" size={14} class="check-icon" />
+          <span id="ai-result-stats">Cours rédigé avec succès</span>
+        </div>
+        <button type="button" class="btn-text-action" id="btn-ai-retry">
+          <Icon name="refresh" size={13} />
+          <span>Régénérer</span>
+        </button>
+      </div>
+
+      <div class="result-preview-box">
+        <div class="result-preview-content" id="ai-result-preview"></div>
+      </div>
+
+      <div class="result-apply-options">
+        <span class="apply-label">Comment intégrer ce document ?</span>
+        <div class="apply-buttons">
+          <button type="button" class="btn btn--primary" id="btn-apply-as-new-note" title="Crée un nouveau document et conserve vos notes initiales intactes">
+            <Icon name="plus" size={14} />
+            <span>Créer une nouvelle note (recommandé)</span>
+          </button>
+          <button type="button" class="btn" id="btn-apply-append" title="Ajoute le cours rédigé à la suite de vos notes actuelles">
+            <Icon name="arrow-right" size={14} />
+            <span>Ajouter à la suite</span>
+          </button>
+          <button type="button" class="btn btn--danger-subtle" id="btn-apply-replace" title="Remplace le contenu actuel de votre note">
+            <span>Remplacer le texte actuel</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<style>
+  .ai-draft-modal {
+    border-radius: var(--radius);
+    padding: 0;
+    max-width: 640px;
+    width: min(calc(100vw - 1.5rem), 640px);
+    max-height: calc(100dvh - 2.5rem);
+    overflow-y: auto;
+    margin: auto;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--fg);
+    box-shadow: var(--shadow-md);
+  }
+
+  .ai-draft-modal::backdrop {
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .modal-inner {
+    padding: clamp(1rem, 0.75rem + 1vw, 1.75rem);
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .header-titles {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .label-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+  }
+
+  .modal-title {
+    margin: 0;
+    font-family: var(--font-text);
+    font-size: 1.35rem;
+    letter-spacing: -0.02em;
+  }
+
+  .btn-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0.2rem;
+    border-radius: 4px;
+    transition: color 0.15s ease;
+  }
+
+  .btn-close:hover {
+    color: var(--fg);
+  }
+
+  /* Étape 1 */
+  .ai-config-step {
+    display: grid;
+    gap: 1.15rem;
+  }
+
+  .source-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+
+  .source-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--r-sm);
+    background: var(--soft);
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .source-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem;
+    font-size: 0.88rem;
+    min-width: 0;
+  }
+
+  .source-label {
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+
+  .source-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 300px;
+  }
+
+  .source-words {
+    font-size: 0.8rem;
+  }
+
+  .format-choice-group {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .format-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  .format-card:hover {
+    border-color: var(--line-strong);
+    background: var(--bg);
+  }
+
+  .format-card.active {
+    border-color: var(--accent);
+    background: var(--bg);
+  }
+
+  .format-card input[type="radio"] {
+    margin-top: 0.25rem;
+    accent-color: var(--accent);
+  }
+
+  .format-card-content {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+
+  .format-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.95rem;
+    color: var(--fg);
+  }
+
+  .format-card-content p {
+    margin: 0;
+    font-size: 0.83rem;
+    line-height: 1.45;
+  }
+
+  .engine-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.85rem;
+    background: var(--soft);
+    border-radius: var(--r-sm);
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+
+  .engine-link {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--accent);
+    text-decoration: underline;
+  }
+
+  .btn-full {
+    width: 100%;
+    justify-content: center;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.95rem;
+  }
+
+  /* Étape 2 : Chargement */
+  .ai-loading-step {
+    padding: 2.5rem 1rem;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    gap: 0.75rem;
+  }
+
+  .loading-spinner {
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 3px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .loading-title {
+    margin: 0.3rem 0 0;
+    font-family: var(--font-text);
+    font-size: 1.15rem;
+    color: var(--fg);
+  }
+
+  .loading-desc {
+    margin: 0;
+    max-width: 420px;
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+
+  /* Étape 3 : Résultat */
+  .ai-result-step {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .result-stats {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--success);
+  }
+
+  .btn-text-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 0.82rem;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    border-radius: var(--r-sm);
+  }
+
+  .btn-text-action:hover {
+    color: var(--fg);
+    background: var(--soft);
+  }
+
+  .result-preview-box {
+    max-height: 380px;
+    overflow-y: auto;
+    padding: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+
+  .result-preview-content {
+    font-size: 0.92rem;
+    line-height: 1.6;
+  }
+
+  .result-apply-options {
+    display: grid;
+    gap: 0.6rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .apply-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .apply-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .btn--danger-subtle {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+  }
+
+  .btn--danger-subtle:hover {
+    background: rgba(184, 50, 42, 0.08);
+  }
+</style>

@@ -1,16 +1,13 @@
 import {
   getCurrentUserCached,
-  getUserCoursesImmediate,
   fetchUserCourses,
-  createUserCourse,
-  updateUserCourse,
+  upsertUserCourse,
   deleteUserCourse,
-  saveLocalUserCourses,
   getLocalUserCourses,
-  notifyCoursesChanged,
+  isValidUuid,
   type DbCourse,
 } from './supabase';
-import { loadPersistentJSON, savePersistentJSON } from './persistence';
+import { deleteCookie } from './persistence';
 
 export interface NoteItem {
   id: string;
@@ -25,14 +22,33 @@ export interface NoteItem {
   updated_at: string;
 }
 
-const GUEST_STORAGE_KEY = 'marges_guest_notes';
-const NOTES_CACHE_KEY = 'marges_notes_cache';
+const LEGACY_KEYS = [
+  'marges_notes_cache',
+  'marges_notes_cache_meta',
+  'marges_guest_notes',
+  'marges_guest_notes_meta',
+  'marges_user_courses_guest',
+];
 
-function generateId(): string {
+function purgeLegacyLocalNoteCaches(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    LEGACY_KEYS.forEach((k) => {
+      localStorage.removeItem(k);
+      deleteCookie(k);
+    });
+  } catch {}
+}
+
+export function generateNoteId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  return 'note_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 export function isCourseNote(c: DbCourse): boolean {
@@ -84,7 +100,7 @@ export function dbCourseToNote(c: DbCourse): NoteItem {
   const font = fontTag ? (fontTag.slice('font:'.length) === 'serif' ? 'serif' : 'sans') : undefined;
 
   return {
-    id: c.id || generateId(),
+    id: c.id && isValidUuid(c.id) ? c.id : generateNoteId(),
     title: c.title || 'Sans titre',
     body_md: c.body_md || '',
     subject,
@@ -115,7 +131,7 @@ export function noteToDbCourse(note: NoteItem): DbCourse {
     tags.push(`font:${note.font}`);
   }
   return {
-    id: note.id,
+    id: isValidUuid(note.id) ? note.id : generateNoteId(),
     title: note.title.trim() || 'Sans titre',
     body_md: note.body_md || '',
     tags,
@@ -125,173 +141,65 @@ export function noteToDbCourse(note: NoteItem): DbCourse {
 }
 
 /**
- * Récupère les notes unifiées depuis le cache local (immédiat).
+ * Récupère les notes du compte actuellement connecté depuis son cache isolé.
  */
 export function getLocalNotes(): NoteItem[] {
   if (typeof window === 'undefined') return [];
-  const noteMap = new Map<string, NoteItem>();
+  purgeLegacyLocalNoteCaches();
 
-  // 1. Cache dédié aux notes (garantie locale immédiate à 100%)
-  const dedicatedNotes = loadPersistentJSON<NoteItem[]>(NOTES_CACHE_KEY, []);
-  dedicatedNotes.forEach((n) => {
-    if (n && n.id) noteMap.set(n.id, n);
-  });
+  const user = getCurrentUserCached();
+  if (!user?.id) return [];
 
-  // 2. Cache cours utilisateur
-  const courses = getUserCoursesImmediate();
-  const notesFromCourses = courses.filter(isCourseNote).map(dbCourseToNote);
-  notesFromCourses.forEach((n) => {
-    if (!n || !n.id) return;
-    const existing = noteMap.get(n.id);
-    if (!existing) {
-      noteMap.set(n.id, n);
-      return;
-    }
-    // La police de la note n'est connue que par la ligne de cours (tag « font: ») :
-    // on la reporte pour qu'elle s'applique à la réouverture.
-    if (!existing.font && n.font) existing.font = n.font;
-  });
-
-  // 3. Stockage invité persistant
-  const guestNotes = loadPersistentJSON<NoteItem[]>(GUEST_STORAGE_KEY, []);
-  guestNotes.forEach((n) => {
-    if (n && n.id && !noteMap.has(n.id)) noteMap.set(n.id, n);
-  });
-
-  return Array.from(noteMap.values()).sort(
-    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-  );
+  return getLocalUserCourses(user.id)
+    .filter(isCourseNote)
+    .map(dbCourseToNote)
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 }
 
 /**
- * Récupère les notes avec synchronisation Supabase en arrière-plan.
+ * Récupère les notes du compte actif depuis Supabase.
  */
 export async function fetchUnifiedNotes(): Promise<NoteItem[]> {
-  const immediate = getLocalNotes();
+  purgeLegacyLocalNoteCaches();
   try {
     const remoteCourses = await fetchUserCourses();
-    if (remoteCourses && remoteCourses.length > 0) {
-      const remoteNotes = remoteCourses.filter(isCourseNote).map(dbCourseToNote);
-      const noteMap = new Map<string, NoteItem>();
-      remoteNotes.forEach((n) => {
-        if (n && n.id) noteMap.set(n.id, n);
-      });
-      immediate.forEach((n) => {
-        if (n && n.id && !noteMap.has(n.id)) noteMap.set(n.id, n);
-      });
-      const unified = Array.from(noteMap.values()).sort(
-        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-      );
-      // Mettre à jour le cache dédié pour les futurs accès instantanés
-      savePersistentJSON(NOTES_CACHE_KEY, unified);
-      return unified;
-    }
+    return (remoteCourses || [])
+      .filter(isCourseNote)
+      .map(dbCourseToNote)
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   } catch (err) {
-    console.warn('[Notes] Synchronisation distante impossible, repli local:', err);
+    console.warn('[Notes] Synchronisation distante impossible, repli local du compte:', err);
+    return getLocalNotes();
   }
-  return immediate;
 }
 
 /**
- * Sauvegarde une note de façon optimiste et bidirectionnelle.
+ * Sauvegarde une note dans le compte Supabase actif (et son cache local isolé par user_id).
  */
 export async function saveUnifiedNote(note: NoteItem): Promise<NoteItem> {
+  purgeLegacyLocalNoteCaches();
   const now = new Date().toISOString();
   const updatedNote: NoteItem = {
     ...note,
-    id: note.id || generateId(),
+    id: isValidUuid(note.id) ? note.id : generateNoteId(),
     updated_at: now,
     created_at: note.created_at || now,
   };
 
-  // 1. Sauvegarde systématique et immédiate dans le cache dédié aux notes
-  const dedicatedNotes = loadPersistentJSON<NoteItem[]>(NOTES_CACHE_KEY, []);
-  const dIdx = dedicatedNotes.findIndex((n) => n.id === updatedNote.id);
-  if (dIdx !== -1) {
-    dedicatedNotes[dIdx] = updatedNote;
-  } else {
-    dedicatedNotes.unshift(updatedNote);
-  }
-  savePersistentJSON(NOTES_CACHE_KEY, dedicatedNotes);
-
-  const user = getCurrentUserCached();
   const dbCourse = noteToDbCourse(updatedNote);
-
-  if (user?.id) {
-    // 2. Utilisateur connecté : sauvegarde locale cours (0 ms)
-    const local = getLocalUserCourses(user.id);
-    const existingIndex = local.findIndex((c) => c.id === updatedNote.id);
-
-    if (existingIndex !== -1) {
-      local[existingIndex] = dbCourse;
-    } else {
-      local.unshift(dbCourse);
-    }
-    saveLocalUserCourses(user.id, local);
-    notifyCoursesChanged(existingIndex !== -1 ? 'update' : 'create', dbCourse);
-
-    // Synchronisation distante Supabase en tâche de fond (non bloquante)
-    if (existingIndex !== -1 && local[existingIndex].id) {
-      updateUserCourse(local[existingIndex].id!, {
-        title: dbCourse.title,
-        body_md: dbCourse.body_md,
-        tags: dbCourse.tags,
-      }).catch((e) => console.warn('[Notes] Update distant différé:', e));
-    } else {
-      createUserCourse(dbCourse).catch((e) => console.warn('[Notes] Create distant différé:', e));
-    }
-  } else {
-    // 3. Utilisateur invité ou hors-ligne : sauvegarde persistante locale
-    const guestList = loadPersistentJSON<NoteItem[]>(GUEST_STORAGE_KEY, []);
-    const idx = guestList.findIndex((n) => n.id === updatedNote.id);
-    if (idx !== -1) {
-      guestList[idx] = updatedNote;
-    } else {
-      guestList.unshift(updatedNote);
-    }
-    savePersistentJSON(GUEST_STORAGE_KEY, guestList);
-
-    // Mettre aussi à jour le cache de cours pour que la page /cours/ affiche la note
-    const localCourses = getUserCoursesImmediate();
-    const courseIdx = localCourses.findIndex((c) => c.id === updatedNote.id);
-    if (courseIdx !== -1) {
-      localCourses[courseIdx] = dbCourse;
-    } else {
-      localCourses.unshift(dbCourse);
-    }
-    saveLocalUserCourses('guest', localCourses);
-    notifyCoursesChanged('update', dbCourse);
+  const saved = await upsertUserCourse(dbCourse);
+  if (saved.id && isValidUuid(saved.id)) {
+    updatedNote.id = saved.id;
   }
-
   return updatedNote;
 }
 
 /**
- * Supprime une note du stockage unifié.
+ * Supprime une note du compte Supabase actif.
  */
 export async function deleteUnifiedNote(id: string): Promise<void> {
-  // Nettoyage dans le cache dédié
-  const dedicatedNotes = loadPersistentJSON<NoteItem[]>(NOTES_CACHE_KEY, []);
-  savePersistentJSON(
-    NOTES_CACHE_KEY,
-    dedicatedNotes.filter((n) => n.id !== id)
-  );
-
-  const user = getCurrentUserCached();
-  if (user?.id) {
-    await deleteUserCourse(id);
-  }
-
-  // Nettoyage dans le stockage invité
-  const guestList = loadPersistentJSON<NoteItem[]>(GUEST_STORAGE_KEY, []);
-  const filtered = guestList.filter((n) => n.id !== id);
-  savePersistentJSON(GUEST_STORAGE_KEY, filtered);
-
-  // Nettoyage cache local cours
-  const localCourses = getUserCoursesImmediate();
-  const remaining = localCourses.filter((c) => c.id !== id);
-  saveLocalUserCourses(user?.id || 'guest', remaining);
-  notifyCoursesChanged('delete', { id });
+  purgeLegacyLocalNoteCaches();
+  await deleteUserCourse(id);
 }
 
 /**

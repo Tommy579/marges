@@ -310,6 +310,89 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
         </form>
       </section>
 
+      <!-- 4bis. Assistant de rédaction IA (Notes) -->
+      <section class="panel config-card" id="ai-settings">
+        <div class="card-head">
+          <span class="icon-tile"><Icon name="sparkle" size={20} /></span>
+          <div>
+            <h2>Assistant de rédaction IA</h2>
+            <p class="meta">Moteur de génération pour le bouton « Rédiger » dans vos notes de cours</p>
+          </div>
+        </div>
+
+        <form id="form-ai-settings" class="config-form">
+          <p class="storage-info" style="margin-bottom: 0.5rem;">
+            Par défaut, Marges utilise <strong>Puter.js</strong> : un accès libre et gratuit qui ne nécessite aucune clé d'API ni carte bancaire. Si vous possédez votre propre clé d'API (Google Gemini ou Groq), vous pouvez la renseigner ici : elle restera stockée uniquement dans votre navigateur.
+          </p>
+
+          <div class="form-group">
+            <label class="field-label">Moteur de rédaction sélectionné :</label>
+            <div class="provider-radio-group">
+              <label class="radio-label">
+                <input type="radio" name="ai-provider" value="puter" checked />
+                <span><strong>Puter.js</strong> (accès libre, 0 € garanti, sans clé)</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="ai-provider" value="gemini" />
+                <span><strong>Google Gemini</strong> (clé personnelle Google AI Studio)</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="ai-provider" value="groq" />
+                <span><strong>Groq Cloud</strong> (clé personnelle Llama 3.3 70B)</span>
+              </label>
+              <label class="radio-label" id="ai-chrome-option" style="display: none;">
+                <input type="radio" name="ai-provider" value="chrome" />
+                <span><strong>Chrome Built-in AI</strong> (Gemini Nano local dans le navigateur)</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group" id="group-gemini-key">
+            <label for="ai-gemini-key" class="field-label">Clé d'API Google Gemini :</label>
+            <input
+              type="password"
+              id="ai-gemini-key"
+              placeholder="AIzaSy..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <span class="help-text">
+              Obtenez une clé gratuite sans carte bancaire sur <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer">Google AI Studio</a>.
+            </span>
+          </div>
+
+          <div class="form-group" id="group-groq-key">
+            <label for="ai-groq-key" class="field-label">Clé d'API Groq :</label>
+            <input
+              type="password"
+              id="ai-groq-key"
+              placeholder="gsk_..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <span class="help-text">
+              Obtenez une clé gratuite sur <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">Groq Console</a> (cadence ultra-rapide).
+            </span>
+          </div>
+
+          <div class="status-box" id="ai-status-box">
+            <div class="status-indicator">
+              <span class="dot-status dot-active" id="ai-dot"></span>
+              <strong id="ai-status-title">Puter.js actif</strong>
+            </div>
+            <p class="status-desc meta" id="ai-status-desc">
+              Accès libre prêt à l'emploi sans configuration supplémentaire.
+            </p>
+          </div>
+
+          <div class="card-actions" style="flex-wrap: wrap;">
+            <button type="submit" class="btn btn--primary btn--sm">Enregistrer les réglages IA</button>
+            <button type="button" class="btn btn--sm" id="btn-test-ai">Tester la génération</button>
+            <button type="button" class="btn btn--sm" id="btn-reset-ai">Réinitialiser (Puter par défaut)</button>
+          </div>
+        </form>
+      </section>
+
       <!-- 5. Persistance des données & Cookies -->
       <section class="panel config-card">
         <div class="card-head">
@@ -384,6 +467,13 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
     type AmbianceColorId,
   } from '../../utils/supabase';
   import { toast } from '../../utils/toast';
+  import {
+    getAiSettings,
+    saveAiSettings,
+    isChromeAiAvailable,
+    generateCourseDraft,
+    type AiProvider,
+  } from '../../utils/aiDraft';
 
   async function initConfigPage() {
     // 0. GESTION DE LA COULEUR D'AMBIANCE (ASSOCIÉE AU COMPTE SUPABASE)
@@ -792,6 +882,130 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
       }
     });
 
+    // 3bis. ASSISTANT DE RÉDACTION IA
+    const formAi = document.getElementById('form-ai-settings') as HTMLFormElement | null;
+    const aiProviderRadios = document.querySelectorAll<HTMLInputElement>('input[name="ai-provider"]');
+    const aiGeminiKeyInput = document.getElementById('ai-gemini-key') as HTMLInputElement | null;
+    const aiGroqKeyInput = document.getElementById('ai-groq-key') as HTMLInputElement | null;
+    const aiChromeOption = document.getElementById('ai-chrome-option');
+    const aiStatusTitle = document.getElementById('ai-status-title');
+    const aiStatusDesc = document.getElementById('ai-status-desc');
+    const aiDot = document.getElementById('ai-dot');
+    const btnTestAi = document.getElementById('btn-test-ai');
+    const btnResetAi = document.getElementById('btn-reset-ai');
+
+    async function loadAiConfigUI() {
+      const settings = getAiSettings();
+      aiProviderRadios.forEach((r) => {
+        r.checked = r.value === settings.provider;
+      });
+
+      if (aiGeminiKeyInput) aiGeminiKeyInput.value = settings.geminiKey;
+      if (aiGroqKeyInput) aiGroqKeyInput.value = settings.groqKey;
+
+      if (await isChromeAiAvailable()) {
+        if (aiChromeOption) aiChromeOption.style.display = 'flex';
+      }
+
+      updateAiStatusBox(settings.provider, settings.geminiKey, settings.groqKey);
+    }
+
+    function updateAiStatusBox(provider: AiProvider, geminiKey: string, groqKey: string) {
+      if (!aiStatusTitle || !aiStatusDesc || !aiDot) return;
+      aiDot.className = 'dot-status dot-active';
+
+      if (provider === 'gemini') {
+        if (geminiKey) {
+          aiStatusTitle.textContent = 'Google Gemini actif (clé personnelle)';
+          aiStatusDesc.textContent = 'Appel direct au modèle gemini-2.5-flash via votre clé Google AI Studio.';
+        } else {
+          aiDot.className = 'dot-status';
+          aiStatusTitle.textContent = 'Google Gemini sélectionné (clé manquante)';
+          aiStatusDesc.textContent = 'Ajoutez votre clé Google AI Studio ci-dessus pour utiliser Gemini.';
+        }
+      } else if (provider === 'groq') {
+        if (groqKey) {
+          aiStatusTitle.textContent = 'Groq Cloud actif (clé personnelle)';
+          aiStatusDesc.textContent = 'Appel direct au modèle Llama 3.3 70B via votre clé Groq.';
+        } else {
+          aiDot.className = 'dot-status';
+          aiStatusTitle.textContent = 'Groq sélectionné (clé manquante)';
+          aiStatusDesc.textContent = 'Ajoutez votre clé Groq Console ci-dessus pour utiliser Groq.';
+        }
+      } else if (provider === 'chrome') {
+        aiStatusTitle.textContent = 'Chrome Built-in AI (local)';
+        aiStatusDesc.textContent = 'Inférence locale via Gemini Nano dans votre navigateur Chrome.';
+      } else {
+        aiStatusTitle.textContent = 'Puter.js actif (par défaut)';
+        aiStatusDesc.textContent = 'Accès libre et gratuit sans clé d’API ni inscription obligatoire.';
+      }
+    }
+
+    aiProviderRadios.forEach((r) => {
+      r.addEventListener('change', () => {
+        const prov = (document.querySelector('input[name="ai-provider"]:checked') as HTMLInputElement)?.value as AiProvider || 'puter';
+        updateAiStatusBox(prov, aiGeminiKeyInput?.value || '', aiGroqKeyInput?.value || '');
+      });
+    });
+
+    formAi?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const prov = (document.querySelector('input[name="ai-provider"]:checked') as HTMLInputElement)?.value as AiProvider || 'puter';
+      const gemKey = aiGeminiKeyInput?.value.trim() || '';
+      const groqKey = aiGroqKeyInput?.value.trim() || '';
+
+      saveAiSettings({
+        provider: prov,
+        geminiKey: gemKey,
+        groqKey: groqKey,
+      });
+
+      updateAiStatusBox(prov, gemKey, groqKey);
+      toast('Réglages de l’assistant IA enregistrés avec succès.', 'success');
+    });
+
+    btnResetAi?.addEventListener('click', () => {
+      saveAiSettings({
+        provider: 'puter',
+        geminiKey: '',
+        groqKey: '',
+      });
+      loadAiConfigUI();
+      toast('Assistant IA réinitialisé sur Puter.js par défaut.', 'info');
+    });
+
+    btnTestAi?.addEventListener('click', async () => {
+      if (!btnTestAi) return;
+      const originalText = btnTestAi.textContent;
+      btnTestAi.textContent = 'Test en cours...';
+      (btnTestAi as HTMLButtonElement).disabled = true;
+
+      try {
+        const prov = (document.querySelector('input[name="ai-provider"]:checked') as HTMLInputElement)?.value as AiProvider || 'puter';
+        const res = await generateCourseDraft({
+          title: 'Test',
+          notes: 'Notions clés : conscience, doute méthodique chez René Descartes.',
+          mode: 'fiche',
+          provider: prov,
+        });
+
+        toast(`Test réussi (${res.providerUsed}) !`, 'success');
+        if (aiStatusDesc) {
+          aiStatusDesc.textContent = `Test validé avec succès (${res.providerUsed}).`;
+        }
+      } catch (err: any) {
+        toast('Échec du test : ' + (err?.message || 'Erreur inconnue'), 'error', 4500);
+        if (aiStatusDesc) {
+          aiStatusDesc.textContent = `Échec du test : ${err?.message || 'Erreur inconnue'}`;
+        }
+      } finally {
+        btnTestAi.textContent = originalText;
+        (btnTestAi as HTMLButtonElement).disabled = false;
+      }
+    });
+
+    loadAiConfigUI();
+
     // 4. COOKIES & DONNÉES
     const cookieStatus = document.getElementById('cookie-status');
     const notifPermStatus = document.getElementById('notif-perm-status');
@@ -944,6 +1158,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
     font-weight: 600;
   }
   .config-form input[type="text"],
+  .config-form input[type="password"],
   .config-form input[type="url"],
   .config-form input[type="time"],
   .config-form input[type="file"],
@@ -961,6 +1176,21 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
   .config-form select:focus {
     border-color: var(--fg);
     outline: none;
+  }
+  .provider-radio-group {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 0.2rem;
+  }
+  .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .radio-label input[type="radio"] {
+    accent-color: var(--accent);
   }
   .help-text {
     font-size: 0.8rem;

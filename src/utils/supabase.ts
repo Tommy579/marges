@@ -135,6 +135,13 @@ export function clearLocalUserData(): void {
     'marges_custom_schedule_events',
     'marges_custom_subjects',
     'marges_custom_courses',
+    'marges_notes_cache',
+    'marges_notes_cache_meta',
+    'marges_guest_notes',
+    'marges_guest_notes_meta',
+    'marges_deleted_courses_tombstones',
+    'marges_pending_course_sync',
+    'marges_notes_collapsed',
   ];
   keysToRemove.forEach((k) => {
     try {
@@ -144,11 +151,19 @@ export function clearLocalUserData(): void {
   });
 
   // Nettoyage de sécurité de tous les jetons d'authentification Supabase locaux
-  // et des caches de cours par compte utilisateur
+  // et des caches de cours/notes par compte utilisateur
   try {
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
-      if (k && (k.startsWith('sb-') || k.includes('-auth-token') || k.startsWith('marges_user_courses_'))) {
+      if (
+        k &&
+        (k.startsWith('sb-') ||
+          k.includes('-auth-token') ||
+          k.startsWith('marges_user_courses_') ||
+          k.startsWith('marges_notes_cache_') ||
+          k.startsWith('marges_deleted_courses_') ||
+          k.startsWith('marges_pending_course_sync_'))
+      ) {
         localStorage.removeItem(k);
       }
     }
@@ -324,12 +339,15 @@ export function getCurrentUserCached(): User | null {
   return null;
 }
 
-const DELETED_COURSES_KEY = 'marges_deleted_courses_tombstones';
+function getDeletedCoursesKey(userId?: string): string {
+  const uid = userId || getCurrentUserCached()?.id;
+  return uid ? `marges_deleted_courses_${uid}` : 'marges_deleted_courses_tombstones';
+}
 
-export function getDeletedCourseTombstones(): Set<string> {
+export function getDeletedCourseTombstones(userId?: string): Set<string> {
   if (typeof window === 'undefined') return new Set();
   try {
-    const raw = localStorage.getItem(DELETED_COURSES_KEY);
+    const raw = localStorage.getItem(getDeletedCoursesKey(userId));
     if (!raw) return new Set();
     const arr = JSON.parse(raw);
     return new Set(Array.isArray(arr) ? arr.map((s: string) => String(s).toLowerCase().trim()) : []);
@@ -346,12 +364,15 @@ export function getDeletedCourseTombstones(): Set<string> {
  * alors le cache local par la liste distante, et les cours fraîchement importés
  * disparaissaient juste après être apparus.
  */
-const PENDING_SYNC_KEY = 'marges_pending_course_sync';
+function getPendingSyncKey(userId?: string): string {
+  const uid = userId || getCurrentUserCached()?.id;
+  return uid ? `marges_pending_course_sync_${uid}` : 'marges_pending_course_sync';
+}
 
-export function getPendingCourseIds(): Set<string> {
+export function getPendingCourseIds(userId?: string): Set<string> {
   if (typeof window === 'undefined') return new Set();
   try {
-    const raw = localStorage.getItem(PENDING_SYNC_KEY);
+    const raw = localStorage.getItem(getPendingSyncKey(userId));
     const arr = raw ? JSON.parse(raw) : [];
     return new Set(Array.isArray(arr) ? arr.map((id: unknown) => String(id)) : []);
   } catch {
@@ -359,46 +380,46 @@ export function getPendingCourseIds(): Set<string> {
   }
 }
 
-function writePendingCourseIds(ids: Set<string>): void {
+function writePendingCourseIds(ids: Set<string>, userId?: string): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(Array.from(ids).slice(-500)));
+    localStorage.setItem(getPendingSyncKey(userId), JSON.stringify(Array.from(ids).slice(-500)));
   } catch {}
 }
 
-export function markCoursesPendingSync(ids: Array<string | undefined>): void {
+export function markCoursesPendingSync(ids: Array<string | undefined>, userId?: string): void {
   const valid = ids.filter((id): id is string => Boolean(id));
   if (valid.length === 0) return;
-  const pending = getPendingCourseIds();
+  const pending = getPendingCourseIds(userId);
   valid.forEach((id) => pending.add(id));
-  writePendingCourseIds(pending);
+  writePendingCourseIds(pending, userId);
 }
 
-export function clearCoursesPendingSync(ids: Array<string | undefined>): void {
-  const pending = getPendingCourseIds();
+export function clearCoursesPendingSync(ids: Array<string | undefined>, userId?: string): void {
+  const pending = getPendingCourseIds(userId);
   if (pending.size === 0) return;
   let changed = false;
   ids.forEach((id) => {
     if (id && pending.delete(id)) changed = true;
   });
-  if (changed) writePendingCourseIds(pending);
+  if (changed) writePendingCourseIds(pending, userId);
 }
 
-export function addDeletedCourseTombstone(idOrTitle: string): void {
+export function addDeletedCourseTombstone(idOrTitle: string, userId?: string): void {
   if (typeof window === 'undefined' || !idOrTitle) return;
   try {
-    const set = getDeletedCourseTombstones();
+    const set = getDeletedCourseTombstones(userId);
     set.add(String(idOrTitle).toLowerCase().trim());
-    localStorage.setItem(DELETED_COURSES_KEY, JSON.stringify(Array.from(set).slice(-500)));
+    localStorage.setItem(getDeletedCoursesKey(userId), JSON.stringify(Array.from(set).slice(-500)));
   } catch {}
 }
 
-export function clearCourseTombstone(idOrTitle: string): void {
+export function clearCourseTombstone(idOrTitle: string, userId?: string): void {
   if (typeof window === 'undefined' || !idOrTitle) return;
   try {
-    const set = getDeletedCourseTombstones();
+    const set = getDeletedCourseTombstones(userId);
     set.delete(String(idOrTitle).toLowerCase().trim());
-    localStorage.setItem(DELETED_COURSES_KEY, JSON.stringify(Array.from(set)));
+    localStorage.setItem(getDeletedCoursesKey(userId), JSON.stringify(Array.from(set)));
   } catch {}
 }
 
@@ -457,23 +478,8 @@ export async function cleanupCourseFiles(course: DbCourse, userId?: string): Pro
 export function getUserCoursesImmediate(): DbCourse[] {
   if (typeof window === 'undefined') return [];
   const user = getCurrentUserCached();
-  if (user?.id) {
-    return getLocalUserCourses(user.id);
-  }
-  // Si pas de session explicite, récupérer le dernier cache de cours utilisateur valide
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith('marges_user_courses_')) {
-      try {
-        const raw = localStorage.getItem(k);
-        if (raw) {
-          const list = JSON.parse(raw);
-          if (Array.isArray(list) && list.length > 0) return list;
-        }
-      } catch {}
-    }
-  }
-  return [];
+  if (!user?.id) return [];
+  return getLocalUserCourses(user.id);
 }
 
 export function isValidUuid(str: any): boolean {
@@ -484,24 +490,20 @@ export async function fetchUserCourses(): Promise<DbCourse[]> {
   const cachedUser = getCurrentUserCached();
   const user = cachedUser || (await getCurrentUser().catch(() => null));
   const activeId = user?.id;
-  const localCourses = activeId ? getLocalUserCourses(activeId) : getUserCoursesImmediate();
+  if (!activeId) return [];
+  const localCourses = getLocalUserCourses(activeId);
 
   const remoteFetch = async (): Promise<DbCourse[]> => {
     const sb = getSupabase();
-    const query = sb
+    const { data, error } = await sb
       .from('courses')
       .select('*')
+      .eq('user_id', activeId)
       .neq('title', TIMETABLE_SYNC_TITLE)
       .order('updated_at', { ascending: false });
-
-    if (activeId) {
-      query.eq('user_id', activeId);
-    }
-
-    const { data, error } = await query;
     if (error) throw error;
 
-    const tombstones = getDeletedCourseTombstones();
+    const tombstones = getDeletedCourseTombstones(activeId);
 
     const remoteFiltered = (data || []).filter(
       (c) =>
@@ -522,40 +524,37 @@ export async function fetchUserCourses(): Promise<DbCourse[]> {
     });
 
     // Synchronisation bidirectionnelle : on ne perd jamais une création locale.
-    if (activeId) {
-      const remoteIds = new Set(remoteFiltered.map((r) => r.id).filter(Boolean) as string[]);
-      const pendingIds = getPendingCourseIds();
+    const remoteIds = new Set(remoteFiltered.map((r) => r.id).filter(Boolean) as string[]);
+    const pendingIds = getPendingCourseIds(activeId);
 
-      // Un cours local absent du distant est une création en attente dans deux cas :
-      // il n'a pas encore d'identifiant valide, ou il est marqué « à synchroniser »
-      // (l'insertion distante précédente a échoué). Dans les deux cas on le renvoie
-      // au lieu de le faire disparaître de l'écran.
-      const pendingLocal = localCourses.filter((l) => {
-        const title = (l.title || '').toLowerCase().trim();
-        if (!title) return false;
-        if (tombstones.has((l.id || '').toLowerCase().trim()) || tombstones.has(title)) return false;
-        if (l.id && remoteIds.has(l.id)) return false;
-        return !l.id || !isValidUuid(l.id) || pendingIds.has(l.id);
-      });
+    // Un cours local absent du distant est une création en attente dans deux cas :
+    // il n'a pas encore d'identifiant valide, ou il est marqué « à synchroniser »
+    // (l'insertion distante précédente a échoué). Dans les deux cas on le renvoie
+    // au lieu de le faire disparaître de l'écran.
+    const pendingLocal = localCourses.filter((l) => {
+      if (l.user_id && l.user_id !== activeId) return false;
+      const title = (l.title || '').toLowerCase().trim();
+      if (!title) return false;
+      if (tombstones.has((l.id || '').toLowerCase().trim()) || tombstones.has(title)) return false;
+      if (l.id && remoteIds.has(l.id)) return false;
+      return !l.id || !isValidUuid(l.id) || pendingIds.has(l.id);
+    });
 
-      if (pendingLocal.length > 0) {
-        createBatchUserCourses(pendingLocal).catch((e) =>
-          console.warn('[Supabase Sync] Téléversement des cours locaux non synchronisés:', e)
-        );
-      }
-
-      const merged = [...remoteFiltered, ...pendingLocal];
-      if (merged.length > 0) {
-        saveLocalUserCourses(activeId, merged);
-        return merged;
-      }
-
-      // Vraiment rien nulle part : le cache peut être vidé.
-      saveLocalUserCourses(activeId, []);
-      return [];
+    if (pendingLocal.length > 0) {
+      createBatchUserCourses(pendingLocal).catch((e) =>
+        console.warn('[Supabase Sync] Téléversement des cours locaux non synchronisés:', e)
+      );
     }
 
-    return remoteFiltered;
+    const merged = [...remoteFiltered, ...pendingLocal];
+    if (merged.length > 0) {
+      saveLocalUserCourses(activeId, merged);
+      return merged;
+    }
+
+    // Vraiment rien nulle part : le cache peut être vidé.
+    saveLocalUserCourses(activeId, []);
+    return [];
   };
 
   // Timeout généreux (8s) pour réseaux mobiles lents
@@ -589,12 +588,15 @@ export async function createUserCourse(course: Omit<DbCourse, 'id' | 'user_id' |
     updated_at: now,
   };
 
-  clearCourseTombstone(newCourse.title);
-  if (newCourse.id) clearCourseTombstone(newCourse.id);
+  clearCourseTombstone(newCourse.title, user.id);
+  if (newCourse.id) {
+    clearCourseTombstone(newCourse.id, user.id);
+    markCoursesPendingSync([newCourse.id], user.id);
+  }
 
   // Sauvegarde optimiste locale dédiée à ce compte
   const localList = getLocalUserCourses(user.id);
-  const updatedList = [newCourse, ...localList.filter((c) => (newCourse.id && c.id !== newCourse.id) || c.title !== newCourse.title)];
+  const updatedList = [newCourse, ...localList.filter((c) => (newCourse.id ? c.id !== newCourse.id : c.title !== newCourse.title))];
   saveLocalUserCourses(user.id, updatedList);
   notifyCoursesChanged('create', newCourse);
 
@@ -624,19 +626,23 @@ export async function createUserCourse(course: Omit<DbCourse, 'id' | 'user_id' |
         delete payload.id;
         const retry = await sb.from('courses').insert([payload]).select().single();
         if (retry.data) {
-          const idx = updatedList.findIndex((c) => c.title === newCourse.title);
-          if (idx !== -1) updatedList[idx] = retry.data;
-          else updatedList.unshift(retry.data);
-          saveLocalUserCourses(user.id, updatedList);
+          clearCoursesPendingSync([newCourse.id, retry.data.id], user.id);
+          const freshLocal = getLocalUserCourses(user.id);
+          const idx = freshLocal.findIndex((c) => (newCourse.id && c.id === newCourse.id) || c.title === newCourse.title);
+          if (idx !== -1) freshLocal[idx] = retry.data;
+          else freshLocal.unshift(retry.data);
+          saveLocalUserCourses(user.id, freshLocal);
           notifyCoursesChanged('create', retry.data);
           return retry.data;
         }
       }
     } else if (data) {
-      const idx = updatedList.findIndex((c) => c.title === newCourse.title || (newCourse.id && c.id === newCourse.id));
-      if (idx !== -1) updatedList[idx] = data;
-      else updatedList.unshift(data);
-      saveLocalUserCourses(user.id, updatedList);
+      clearCoursesPendingSync([newCourse.id, data.id], user.id);
+      const freshLocal = getLocalUserCourses(user.id);
+      const idx = freshLocal.findIndex((c) => (newCourse.id && c.id === newCourse.id) || c.title === newCourse.title);
+      if (idx !== -1) freshLocal[idx] = data;
+      else freshLocal.unshift(data);
+      saveLocalUserCourses(user.id, freshLocal);
       notifyCoursesChanged('create', data);
       return data;
     }
@@ -645,6 +651,84 @@ export async function createUserCourse(course: Omit<DbCourse, 'id' | 'user_id' |
   }
 
   return newCourse;
+}
+
+export async function upsertUserCourse(course: DbCourse): Promise<DbCourse> {
+  const user = getCurrentUserCached() || (await getCurrentUser().catch(() => null));
+  if (!user) {
+    throw new Error('Vous devez être connecté à votre compte pour enregistrer une note.');
+  }
+
+  const now = course.updated_at || new Date().toISOString();
+  const id = isValidUuid(course.id)
+    ? course.id!
+    : typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : undefined;
+
+  const savedCourse: DbCourse = {
+    ...course,
+    id,
+    user_id: user.id,
+    created_at: course.created_at || now,
+    updated_at: now,
+  };
+
+  if (savedCourse.id) {
+    clearCourseTombstone(savedCourse.id, user.id);
+    markCoursesPendingSync([savedCourse.id], user.id);
+  }
+
+  const local = getLocalUserCourses(user.id);
+  const existingIdx = local.findIndex((c) => c.id === savedCourse.id);
+  if (existingIdx !== -1) {
+    local[existingIdx] = savedCourse;
+  } else {
+    local.unshift(savedCourse);
+  }
+  saveLocalUserCourses(user.id, local);
+  notifyCoursesChanged(existingIdx !== -1 ? 'update' : 'create', savedCourse);
+
+  try {
+    const sb = getSupabase();
+    const payload: any = {
+      user_id: user.id,
+      title: savedCourse.title,
+      body_md: savedCourse.body_md || '',
+      tags: Array.isArray(savedCourse.tags) ? savedCourse.tags : [],
+      updated_at: now,
+    };
+    if (savedCourse.id && isValidUuid(savedCourse.id)) {
+      payload.id = savedCourse.id;
+    }
+
+    const { data, error } = await sb
+      .from('courses')
+      .upsert([payload], { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (data) {
+      clearCoursesPendingSync([savedCourse.id, data.id], user.id);
+      const freshLocal = getLocalUserCourses(user.id);
+      const idx = freshLocal.findIndex((c) => c.id === savedCourse.id || c.id === data.id);
+      if (idx !== -1) {
+        // Ne pas écraser une frappe locale plus récente survenue pendant la requête
+        const localTime = new Date(freshLocal[idx].updated_at || 0).getTime();
+        const remoteTime = new Date(now).getTime();
+        if (localTime <= remoteTime) {
+          freshLocal[idx] = data;
+          saveLocalUserCourses(user.id, freshLocal);
+        }
+      }
+      return data;
+    }
+  } catch (err) {
+    console.warn('[Supabase Course] Upsert distant différé (conservé localement):', err);
+  }
+
+  return savedCourse;
 }
 
 export async function createBatchUserCourses(courses: Array<Omit<DbCourse, 'id' | 'user_id' | 'created_at' | 'updated_at'>>): Promise<DbCourse[]> {
@@ -788,23 +872,24 @@ export async function updateUserCourse(id: string, updates: Partial<Omit<DbCours
 export async function deleteUserCourse(id: string): Promise<void> {
   const user = getCurrentUserCached() || (await getCurrentUser().catch(() => null));
   const activeId = user?.id;
+  const byUuid = isValidUuid(id);
 
-  addDeletedCourseTombstone(id);
-  clearCoursesPendingSync([id]);
+  addDeletedCourseTombstone(id, activeId);
+  clearCoursesPendingSync([id], activeId);
 
   if (activeId) {
     const local = getLocalUserCourses(activeId);
     const targetCourse = local.find(
-      (c) => (c.id && c.id === id) || c.title.toLowerCase().trim() === id.toLowerCase().trim()
+      (c) => (c.id && c.id === id) || (!byUuid && c.title.toLowerCase().trim() === id.toLowerCase().trim())
     );
     if (targetCourse) {
-      addDeletedCourseTombstone(targetCourse.title);
-      if (targetCourse.id) addDeletedCourseTombstone(targetCourse.id);
+      if (targetCourse.id) addDeletedCourseTombstone(targetCourse.id, activeId);
+      else addDeletedCourseTombstone(targetCourse.title, activeId);
       cleanupCourseFiles(targetCourse, activeId).catch(() => {});
     }
 
     const updated = local.filter(
-      (c) => !(c.id && c.id === id) && c.title.toLowerCase().trim() !== id.toLowerCase().trim()
+      (c) => !(c.id && c.id === id) && (byUuid || c.title.toLowerCase().trim() !== id.toLowerCase().trim())
     );
     saveLocalUserCourses(activeId, updated);
   }
@@ -813,7 +898,7 @@ export async function deleteUserCourse(id: string): Promise<void> {
 
   try {
     const sb = getSupabase();
-    if (isValidUuid(id)) {
+    if (byUuid) {
       await sb.from('courses').delete().eq('id', id);
     } else if (activeId) {
       await sb.from('courses').delete().eq('user_id', activeId).eq('title', id);
@@ -828,8 +913,8 @@ export async function deleteBatchUserCourses(ids: string[]): Promise<void> {
   const user = getCurrentUserCached() || (await getCurrentUser().catch(() => null));
   const activeId = user?.id;
 
-  ids.forEach((id) => addDeletedCourseTombstone(id));
-  clearCoursesPendingSync(ids);
+  ids.forEach((id) => addDeletedCourseTombstone(id, activeId));
+  clearCoursesPendingSync(ids, activeId);
 
   if (activeId) {
     const toDel = new Set(ids.map((i) => i.toLowerCase().trim()));
@@ -838,8 +923,8 @@ export async function deleteBatchUserCourses(ids: string[]): Promise<void> {
       (c) => (c.id && toDel.has(c.id.toLowerCase().trim())) || toDel.has(c.title.toLowerCase().trim())
     );
     targetCourses.forEach((tc) => {
-      addDeletedCourseTombstone(tc.title);
-      if (tc.id) addDeletedCourseTombstone(tc.id);
+      if (tc.id) addDeletedCourseTombstone(tc.id, activeId);
+      else addDeletedCourseTombstone(tc.title, activeId);
       cleanupCourseFiles(tc, activeId).catch(() => {});
     });
 
@@ -869,11 +954,11 @@ export async function clearUserCourses(): Promise<void> {
   if (activeId) {
     const local = getLocalUserCourses(activeId);
     local.forEach((c) => {
-      if (c.id) addDeletedCourseTombstone(c.id);
-      addDeletedCourseTombstone(c.title);
+      if (c.id) addDeletedCourseTombstone(c.id, activeId);
+      else addDeletedCourseTombstone(c.title, activeId);
       cleanupCourseFiles(c, activeId).catch(() => {});
     });
-    clearCoursesPendingSync(local.map((c) => c.id));
+    clearCoursesPendingSync(local.map((c) => c.id), activeId);
     saveLocalUserCourses(activeId, []);
   }
 
@@ -894,8 +979,10 @@ export async function clearUserCourses(): Promise<void> {
 
   if (typeof window !== 'undefined') {
     try {
-      localStorage.removeItem('marges_custom_courses');
-      localStorage.removeItem('marges_custom_subjects');
+      ['marges_custom_courses', 'marges_custom_subjects', 'marges_notes_cache', 'marges_notes_cache_meta', 'marges_guest_notes', 'marges_guest_notes_meta'].forEach((k) => {
+        localStorage.removeItem(k);
+        deleteCookie(k);
+      });
     } catch {}
   }
 }
