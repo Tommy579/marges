@@ -438,8 +438,10 @@ code, kbd {
   align-items: center;
   gap: .4em;
 }
-.more span { transition: transform .2s var(--ease); }
-.more:hover span { transform: translateX(3px); }
+.more span,
+.more svg { transition: transform .2s var(--ease); }
+.more:hover span,
+.more:hover svg { transform: translateX(3px); }
 .more:hover { text-decoration: underline; text-decoration-thickness: 1px; }
 
 /* --------------------------------------------------------------------------
