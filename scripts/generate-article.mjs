@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 // Charge le fichier .env local s'il existe (Node 20.12+ / 22+)
 try {
@@ -225,10 +225,12 @@ function validateFrontmatter(content) {
  * Exécute l'appel Gemini avec Exponential Backoff + Jitter et Fallback multi-modèles
  */
 async function generateWithFallbackAndRetry(prompt) {
+  const thinkingLevel = process.env.GEMINI_THINKING_LEVEL || ThinkingLevel.HIGH;
   const candidateModels = Array.from(
     new Set(
       [
         process.env.GEMINI_MODEL,
+        'gemini-4-neon',
         'gemini-3.8-flash',
         'gemini-3.5-flash-lite',
         'gemini-3.1-flash-lite',
@@ -240,7 +242,7 @@ async function generateWithFallbackAndRetry(prompt) {
 
   for (let modelIdx = 0; modelIdx < candidateModels.length; modelIdx++) {
     const model = candidateModels[modelIdx];
-    console.log(`\n🎯 Modèle sélectionné [${modelIdx + 1}/${candidateModels.length}] : ${model}`);
+    console.log(`\n🎯 Modèle sélectionné [${modelIdx + 1}/${candidateModels.length}] : ${model} (thinking=${thinkingLevel})`);
 
     // Tentative initiale (0) + jusqu'à MAX_RETRIES réessais
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -250,6 +252,9 @@ async function generateWithFallbackAndRetry(prompt) {
           contents: prompt,
           config: {
             temperature: 0.7,
+            thinkingConfig: {
+              thinkingLevel,
+            },
           },
         });
 
