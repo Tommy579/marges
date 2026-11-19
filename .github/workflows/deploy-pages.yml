@@ -65,13 +65,14 @@ jobs:
       - name: 🤖 Génération philosophique quotidienne avec Gemini
         if: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.generate_article == true)) }}
         env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           INPUT_THEME: ${{ inputs.theme }}
           INPUT_FORMAT: ${{ inputs.format }}
           INPUT_SUBJECT: ${{ inputs.subject }}
         run: |
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo "❌ Erreur : Le secret GEMINI_API_KEY n'est pas configuré dans les secrets du dépôt."
+          if [ -z "$GOOGLE_API_KEY" ] && [ -z "$GEMINI_API_KEY" ]; then
+            echo "❌ Erreur : Le secret GOOGLE_API_KEY (ou GEMINI_API_KEY) n'est pas configuré dans les secrets du dépôt."
             exit 1
           fi
 

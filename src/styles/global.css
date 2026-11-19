@@ -219,7 +219,9 @@
   }
 }
 
-/* Choix manuel */
+/* Choix manuel (et synchronisation avec <meta name="color-scheme">) */
+:root:has(> head > meta[name="color-scheme"][content="light"]) { color-scheme: light; }
+:root:has(> head > meta[name="color-scheme"][content="dark"]) { color-scheme: dark; }
 :root[data-theme='light'] { color-scheme: light; }
 :root[data-theme='dark'],
 :root[data-theme='dark'][data-ambiance] {

@@ -53,16 +53,30 @@ const isEspace = Astro.url.pathname.includes('/espace');
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
 
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#faf6f0" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)" />
+
     <!-- Anti-flash : applique le thème et la couleur d'ambiance du compte Supabase actif -->
     <script is:inline>
       (function () {
         function savedTheme() {
           try {
             var local = localStorage.getItem('theme');
-            if (local) return local;
+            if (local === 'light' || local === 'dark') return local;
           } catch (e) {}
           var match = document.cookie.match(/(?:^|; )theme=([^;]*)/);
-          return match ? decodeURIComponent(match[1]) : null;
+          var cookieVal = match ? decodeURIComponent(match[1]) : null;
+          return cookieVal === 'light' || cookieVal === 'dark' ? cookieVal : null;
+        }
+        function applyHeadTheme(doc, pref) {
+          if (pref) {
+            doc.documentElement.dataset.theme = pref;
+          } else {
+            delete doc.documentElement.dataset.theme;
+          }
+          var meta = doc.querySelector('meta[name="color-scheme"]');
+          if (meta) meta.setAttribute('content', pref || 'light dark');
         }
         function savedAccountAmbiance() {
           try {
@@ -81,8 +95,7 @@ const isEspace = Astro.url.pathname.includes('/espace');
           } catch (e) {}
           return null;
         }
-        var t = savedTheme();
-        if (t) document.documentElement.dataset.theme = t;
+        applyHeadTheme(document, savedTheme());
         var a = savedAccountAmbiance();
         if (a) {
           document.documentElement.dataset.ambiance = a;
@@ -91,8 +104,7 @@ const isEspace = Astro.url.pathname.includes('/espace');
         }
         // Conserve le thème et l'ambiance lors des navigations (View Transitions)
         document.addEventListener('astro:before-swap', function (e) {
-          var s = savedTheme();
-          if (s) e.newDocument.documentElement.dataset.theme = s;
+          applyHeadTheme(e.newDocument, savedTheme());
           var amb = document.documentElement.dataset.ambiance || savedAccountAmbiance();
           if (amb && amb !== 'default') {
             e.newDocument.documentElement.dataset.ambiance = amb;
@@ -117,9 +129,6 @@ const isEspace = Astro.url.pathname.includes('/espace');
     <link rel="alternate" type="application/rss+xml" title={`${SITE.title} — flux RSS`} href={new URL('rss.xml', Astro.site)} />
     <link rel="sitemap" href={url('/sitemap-index.xml')} />
 
-    <meta name="theme-color" content="#faf6f0" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)" />
-    <meta name="color-scheme" content="light dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content={SITE.title} />

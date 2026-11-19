@@ -92,11 +92,21 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
             </p>
           </div>
 
-          <div class="card-actions">
-            <button type="button" class="btn btn--sm" id="btn-toggle-dark-preview">
-              <Icon name="sun" size={14} />
-              Basculer clair / sombre pour prévisualiser
-            </button>
+          <div class="card-actions theme-actions">
+            <div class="segmented" role="radiogroup" aria-label="Mode d’affichage" id="config-theme-segmented">
+              <label>
+                <input type="radio" name="config-theme-mode" value="auto" />
+                <span id="config-theme-auto-label">Auto</span>
+              </label>
+              <label>
+                <input type="radio" name="config-theme-mode" value="light" />
+                <span>Clair</span>
+              </label>
+              <label>
+                <input type="radio" name="config-theme-mode" value="dark" />
+                <span>Sombre</span>
+              </label>
+            </div>
             <button type="button" class="btn btn--sm" id="btn-reset-ambiance">
               Rétablir le blanc de base
             </button>
@@ -334,7 +344,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
               </label>
               <label class="radio-label">
                 <input type="radio" name="ai-provider" value="gemini" />
-                <span><strong>Google Gemini</strong> (clé personnelle Google AI Studio)</span>
+                <span><strong>Google Gemini</strong> (clé API Google Cloud Console)</span>
               </label>
               <label class="radio-label">
                 <input type="radio" name="ai-provider" value="groq" />
@@ -357,7 +367,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
               spellcheck="false"
             />
             <span class="help-text">
-              Obtenez une clé gratuite sans carte bancaire sur <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer">Google AI Studio</a>.
+              Créez une clé API dans <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Google Cloud Console</a> après avoir activé <em>Generative Language API</em> sur votre projet.
             </span>
           </div>
 
@@ -474,6 +484,28 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
     generateCourseDraft,
     type AiProvider,
   } from '../../utils/aiDraft';
+  import {
+    THEME_CHANGE_EVENT,
+    applyThemePreference,
+    getSystemTheme,
+    getThemePreference,
+    normalizeThemePreference,
+  } from '../../utils/theme';
+
+  let themeListenersBound = false;
+
+  function syncConfigThemeUI() {
+    const seg = document.getElementById('config-theme-segmented');
+    if (!seg) return;
+    const currentPref = getThemePreference();
+    const autoLabel = document.getElementById('config-theme-auto-label');
+    if (autoLabel) {
+      autoLabel.textContent = `Auto (${getSystemTheme() === 'dark' ? 'sombre' : 'clair'})`;
+    }
+    seg.querySelectorAll<HTMLInputElement>('input[name="config-theme-mode"]').forEach((input) => {
+      input.checked = input.value === currentPref;
+    });
+  }
 
   async function initConfigPage() {
     // 0. GESTION DE LA COULEUR D'AMBIANCE (ASSOCIÉE AU COMPTE SUPABASE)
@@ -482,7 +514,7 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
     const ambianceStatusTitle = document.getElementById('ambiance-status-title');
     const ambianceStatusDesc = document.getElementById('ambiance-status-desc');
     const ambianceDot = document.getElementById('ambiance-dot');
-    const btnToggleDarkPreview = document.getElementById('btn-toggle-dark-preview');
+    const themeSegmented = document.getElementById('config-theme-segmented');
     const btnResetAmbiance = document.getElementById('btn-reset-ambiance');
 
     function getAmbianceLabel(id: AmbianceColorId): string {
@@ -556,18 +588,17 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
       handleSelectAmbiance('default');
     });
 
-    btnToggleDarkPreview?.addEventListener('click', () => {
-      const root = document.documentElement;
-      const isDark =
-        root.dataset.theme === 'dark' ||
-        (!root.dataset.theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      const next = isDark ? 'light' : 'dark';
-      root.dataset.theme = next;
-      try {
-        localStorage.setItem('theme', next);
-        document.cookie = 'theme=' + encodeURIComponent(next) + '; path=/; max-age=31536000; SameSite=Lax';
-      } catch {}
+    syncConfigThemeUI();
+    themeSegmented?.addEventListener('change', (e) => {
+      const target = e.target as HTMLInputElement | null;
+      if (!target || target.name !== 'config-theme-mode') return;
+      applyThemePreference(normalizeThemePreference(target.value));
     });
+    if (!themeListenersBound) {
+      themeListenersBound = true;
+      window.addEventListener(THEME_CHANGE_EVENT, syncConfigThemeUI);
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncConfigThemeUI);
+    }
 
     // 1. GESTION DE L'EMPLOI DU TEMPS & SYNCHRONISATION SUPABASE
     const timetableForm = document.getElementById('form-timetable') as HTMLFormElement;
@@ -916,12 +947,12 @@ const totalFiles = subjects.reduce((acc, s) => acc + s.stats.totalFiles, 0);
 
       if (provider === 'gemini') {
         if (geminiKey) {
-          aiStatusTitle.textContent = 'Google Gemini actif (clé personnelle)';
-          aiStatusDesc.textContent = 'Appel direct au modèle gemini-2.5-flash via votre clé Google AI Studio.';
+          aiStatusTitle.textContent = 'Google Gemini actif (clé Google Cloud)';
+          aiStatusDesc.textContent = 'Appel direct au modèle gemini-2.5-flash via votre clé API Google Cloud Console.';
         } else {
           aiDot.className = 'dot-status';
           aiStatusTitle.textContent = 'Google Gemini sélectionné (clé manquante)';
-          aiStatusDesc.textContent = 'Ajoutez votre clé Google AI Studio ci-dessus pour utiliser Gemini.';
+          aiStatusDesc.textContent = 'Ajoutez votre clé API Google Cloud Console ci-dessus pour utiliser Gemini.';
         }
       } else if (provider === 'groq') {
         if (groqKey) {

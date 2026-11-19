@@ -3,7 +3,7 @@
  *
  * Gère plusieurs moteurs au choix de l'utilisateur :
  * 1. Puter.js (par défaut, sans inscription obligatoire, sans clé d'API)
- * 2. Clé personnelle Google Gemini (AI Studio gratuit)
+ * 2. Clé personnelle Google Gemini (clé API Google Cloud Console)
  * 3. Clé personnelle Groq (Llama 3.3 70B gratuit)
  * 4. Chrome Built-in AI (Gemini Nano local, si activé dans le navigateur)
  */

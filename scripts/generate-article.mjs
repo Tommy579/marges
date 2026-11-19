@@ -2,10 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { GoogleGenAI } from '@google/genai';
 
-// 1. Vérification de la clé API
-const apiKey = process.env.GEMINI_API_KEY;
+// Charge le fichier .env local s'il existe (Node 20.12+ / 22+)
+try {
+  if (fs.existsSync(path.resolve('.env')) && typeof process.loadEnvFile === 'function') {
+    process.loadEnvFile(path.resolve('.env'));
+  }
+} catch {
+  // Ignore si .env est absent ou déjà injecté dans l'environnement
+}
+
+// 1. Vérification de la clé API (Google Cloud Console prioritaire, fallback GEMINI_API_KEY)
+const apiKey = (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
 if (!apiKey) {
-  console.error("❌ Erreur : Variable d'environnement GEMINI_API_KEY manquante.");
+  console.error("❌ Erreur : Variable d'environnement GOOGLE_API_KEY (ou GEMINI_API_KEY) manquante.");
   process.exit(1);
 }
 

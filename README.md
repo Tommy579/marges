@@ -16,7 +16,7 @@ Le fichier [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages
 
 ### 2. Génération philosophique via Gemini API
 - Le script [`scripts/generate-article.mjs`](scripts/generate-article.mjs) est exécuté par le runner GitHub.
-- Il interroge l'API Google Gemini (`gemini-2.5-flash`) en utilisant la variable d'environnement `GEMINI_API_KEY`.
+- Il interroge l'API Google Gemini en utilisant la variable d'environnement `GOOGLE_API_KEY` (clé API Google Cloud Console, avec repli sur `GEMINI_API_KEY`).
 - **Règles de qualité & sécurité :**
   - **Aucun doublon** : le script scanne les titres existants dans `src/content/textes/` et enjoint le modèle d'aborder un angle inédit.
   - **Rigueur philosophique** : contrainte stricte de citer uniquement des auteurs réels et des ouvrages vérifiables.
@@ -28,9 +28,9 @@ Le fichier [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages
 
 ## 🛠️ Configuration requise sur GitHub
 
-1. **Clé API Gemini** :
+1. **Clé API Google Cloud Console (Gemini)** :
    - Rendez-vous sur votre dépôt : `Settings > Secrets and variables > Actions`.
-   - Ajoutez un secret nommé **`GEMINI_API_KEY`** avec votre clé d'API Google AI Studio.
+   - Ajoutez un secret nommé **`GOOGLE_API_KEY`** avec votre clé d'API Google Cloud Console (avec l'API *Generative Language API* activée sur le projet).
 2. **Permissions des Workflows** :
    - Rendez-vous dans : `Settings > Actions > General > Workflow permissions`.
    - Cochez **"Read and write permissions"** pour autoriser le bot à commiter les nouveaux articles.
@@ -51,6 +51,6 @@ npm run dev
 # Compiler le site et générer l'index Pagefind
 npm run build
 
-# Tester la génération d'un article en local
-GEMINI_API_KEY="votre_cle" node scripts/generate-article.mjs conscience essai
+# Tester la génération d'un article en local (après avoir rempli GOOGLE_API_KEY dans .env)
+node scripts/generate-article.mjs conscience essai
 ```

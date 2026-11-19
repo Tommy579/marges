@@ -51,13 +51,22 @@ if (file.type === 'code' || file.type === 'text') {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <title>{file.name} — Marges Cours</title>
     <link rel="icon" type="image/svg+xml" href={url('/favicon.svg')} />
     <script is:inline define:vars={{ espaceUrl: url('/espace/') }}>
       (function () {
         try {
           var t = localStorage.getItem('theme');
-          if (t) document.documentElement.dataset.theme = t;
+          if (t !== 'light' && t !== 'dark') {
+            var m = document.cookie.match(/(?:^|; )theme=([^;]*)/);
+            t = m ? decodeURIComponent(m[1]) : null;
+          }
+          if (t === 'light' || t === 'dark') {
+            document.documentElement.dataset.theme = t;
+            var meta = document.querySelector('meta[name="color-scheme"]');
+            if (meta) meta.setAttribute('content', t);
+          }
           var hasToken = false;
           for (var i = 0; i < localStorage.length; i++) {
             var k = localStorage.key(i);
@@ -338,8 +347,11 @@ if (file.type === 'code' || file.type === 'text') {
       import { renderAsync } from 'docx-preview';
       import { getCurrentSession } from '../../../utils/supabase';
       import { startGlobalReminderWatcher } from '../../../utils/reminders';
+      import { installThemeStorageSync } from '../../../utils/theme';
       import { url } from '../../../utils/url';
       import { esc } from '../../../utils/escape';
+
+      installThemeStorageSync();
 
       getCurrentSession()
         .then((session) => {

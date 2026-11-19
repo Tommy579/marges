@@ -1,48 +1,76 @@
 ---
 /**
- * Bouton de thème clair/sombre. Le choix est mémorisé dans localStorage ;
- * sans choix, le site suit le thème du système.
+ * Bouton de thème à 3 états : Automatique (système) → Clair → Sombre.
+ * Sans choix manuel enregistré, le site suit automatiquement `prefers-color-scheme`.
  */
 ---
 
-<button id="theme-toggle" class="theme-toggle" type="button" aria-label="Changer de thème" title="Changer de thème">
-  <svg class="theme-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-    <circle cx="12" cy="12" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
-    <path d="M12 3.75a8.25 8.25 0 0 1 0 16.5z" fill="currentColor"></path>
+<button
+  id="theme-toggle"
+  class="theme-toggle"
+  type="button"
+  aria-label="Thème automatique (système) — passer au thème clair"
+  title="Thème automatique (système)"
+>
+  <svg class="theme-icon theme-icon--auto" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="8.25"></circle>
+    <path d="M12 3.75a8.25 8.25 0 0 1 0 16.5z" fill="currentColor" stroke="none"></path>
+  </svg>
+  <svg class="theme-icon theme-icon--light" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="4"></circle>
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+  </svg>
+  <svg class="theme-icon theme-icon--dark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
   </svg>
 </button>
 
 <script>
-  const root = document.documentElement;
-  const media = matchMedia('(prefers-color-scheme: dark)');
+  import {
+    THEME_CHANGE_EVENT,
+    applyThemePreference,
+    getSystemTheme,
+    getThemePreference,
+    installThemeStorageSync,
+    nextThemePreference,
+  } from '../utils/theme';
 
-  const current = () => root.dataset.theme ?? (media.matches ? 'dark' : 'light');
+  const media = matchMedia('(prefers-color-scheme: dark)');
 
   function syncLabel() {
     const btn = document.getElementById('theme-toggle');
     if (!btn) return;
-    const label = current() === 'dark' ? 'Passer au thème clair' : 'Passer au thème sombre';
+    const mode = getThemePreference();
+    btn.dataset.mode = mode;
+
+    let label: string;
+    if (mode === 'auto') {
+      const sysLabel = getSystemTheme() === 'dark' ? 'sombre' : 'clair';
+      label = `Thème automatique (système : ${sysLabel}) — passer au thème clair`;
+    } else if (mode === 'light') {
+      label = 'Thème clair — passer au thème sombre';
+    } else {
+      label = 'Thème sombre — revenir au thème automatique';
+    }
+
     btn.setAttribute('aria-label', label);
     btn.setAttribute('title', label);
   }
+
+  installThemeStorageSync();
 
   // Délégation : le bouton est recréé à chaque navigation (View Transitions).
   document.addEventListener('click', (event) => {
     const target = event.target as Element | null;
     if (!target?.closest('#theme-toggle')) return;
-    const next = current() === 'dark' ? 'light' : 'dark';
-    root.dataset.theme = next;
-    try {
-      localStorage.setItem('theme', next);
-    } catch (e) {}
-    try {
-      document.cookie = 'theme=' + encodeURIComponent(next) + '; path=/; max-age=31536000; SameSite=Lax';
-    } catch (e) {}
-    syncLabel();
+    const next = nextThemePreference(getThemePreference());
+    applyThemePreference(next);
   });
 
   media.addEventListener('change', syncLabel);
+  window.addEventListener(THEME_CHANGE_EVENT, syncLabel);
   document.addEventListener('astro:page-load', syncLabel);
+  syncLabel();
 </script>
 
 <style>
@@ -65,9 +93,19 @@
   }
   .theme-toggle:active .theme-icon { transform: scale(.88); }
 
-  :global(:root[data-theme='dark']) .theme-icon { transform: rotate(180deg); }
+  .theme-icon--light,
+  .theme-icon--dark { display: none; }
+
+  :global(:root[data-theme='light']) .theme-icon--auto,
+  :global(:root[data-theme='dark']) .theme-icon--auto { display: none; }
+
+  :global(:root[data-theme='light']) .theme-icon--light { display: block; }
+  :global(:root[data-theme='dark']) .theme-icon--dark { display: block; }
+
   @media (prefers-color-scheme: dark) {
-    :global(:root:not([data-theme='light'])) .theme-icon { transform: rotate(180deg); }
+    :global(:root:not([data-theme='light']):not([data-theme='dark'])) .theme-icon--auto {
+      transform: rotate(180deg);
+    }
   }
   @media (max-width: 52rem) {
     .theme-toggle { width: 2.5rem; height: 2.5rem; }
