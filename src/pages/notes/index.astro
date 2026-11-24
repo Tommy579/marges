@@ -1715,8 +1715,6 @@ const subjectsList = subjects.map((s) => ({
     const unsavedDraftIds = new Set<string>();
 
     // Gestion du style de police (Sans-serif par défaut vs Serif)
-    // La police est enregistrée sur la note elle-même (tag « font: »), pour la suivre
-    // quand on la rouvre ou qu'on la consulte dans le lecteur.
     const savedFont = localStorage.getItem('marges_note_font') || 'sans';
     applyDocFont(savedFont, true);
 
@@ -1730,27 +1728,26 @@ const subjectsList = subjects.map((s) => ({
       if (persistGlobal) localStorage.setItem('marges_note_font', fontType);
     }
 
-    document.querySelectorAll('.btn-font-toggle').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const fontType = btn.getAttribute('data-font') || 'sans';
-        applyDocFont(fontType);
-        // La note courante mémorise son choix : c'est triggerAutoSave qui la met à
-        // jour (il lit la police sur le canvas), sinon la comparaison « rien n'a
-        // changé » annulerait l'enregistrement.
-        if (currentNoteId) triggerAutoSave();
-      });
+    const handleFontClick = (e: Event) => {
+      const btn = (e.currentTarget as HTMLElement);
+      const fontType = btn.getAttribute('data-font') || 'sans';
+      applyDocFont(fontType);
+      if (currentNoteId) triggerAutoSave();
+    };
+
+    const fontToggleButtons = document.querySelectorAll('.btn-font-toggle');
+    fontToggleButtons.forEach((btn) => {
+      btn.addEventListener('click', handleFontClick);
     });
 
     // Récupérer la liste complète et unifiée des matières (instantané en 0 ms)
     function getAllSubjects(): Array<{ name: string; count: number }> {
       const subjectMap = new Map<string, number>();
 
-      // 1. Matières de base issues de l'arborescence physique
       baseSubjects.forEach((s) => {
         if (!subjectMap.has(s.name)) subjectMap.set(s.name, 0);
       });
 
-      // 2. Matières issues du stockage de cours (Supabase / local)
       const dbCourses = getUserCoursesImmediate();
       dbCourses.forEach((c) => {
         let sName = '';
@@ -1779,7 +1776,6 @@ const subjectsList = subjects.map((s) => ({
         }
       });
 
-      // 3. Matières issues des notes actuelles (uniquement les matières réelles)
       notes.forEach((n) => {
         const s = (n.subject || '').trim();
         if (s && s !== 'Sans matière' && s !== 'Notes libres' && !subjectMap.has(s)) {
@@ -1787,7 +1783,6 @@ const subjectsList = subjects.map((s) => ({
         }
       });
 
-      // 4. Compter les notes strictement affiliées à chaque matière
       notes.forEach((n) => {
         const s = (n.subject || '').trim();
         if (s && subjectMap.has(s)) {
@@ -1800,12 +1795,10 @@ const subjectsList = subjects.map((s) => ({
         .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     }
 
-    // 1. Initialisation de la liste déroulante des matières
     function refreshSubjectsDropdown(selectedSubject?: string) {
       const all = getAllSubjects();
       propSubjectSelect.innerHTML = '';
 
-      // Option Racine : note libre, non affiliée à une matière
       const noneOpt = document.createElement('option');
       noneOpt.value = '';
       noneOpt.textContent = 'Aucune matière (Racine)';
@@ -1834,7 +1827,6 @@ const subjectsList = subjects.map((s) => ({
       updateCategoryVisibility();
     }
 
-    // Gestion de la visibilité du sélecteur de catégorie (masqué pour les notes à la racine)
     function updateCategoryVisibility() {
       const subject = (propSubjectSelect?.value || '').trim();
       if (propRowCategory) {
@@ -1842,7 +1834,6 @@ const subjectsList = subjects.map((s) => ({
       }
     }
 
-    // Helper formatage badge catégorie
     function formatCategoryBadge(cat: string): string {
       if (!cat) return '';
       const c = cat.trim();
@@ -1852,7 +1843,26 @@ const subjectsList = subjects.map((s) => ({
       return c.length > 10 ? c.slice(0, 9) + '…' : c;
     }
 
-    // Helper création d'élément de note dans l'arborescence
+    // Références stockées pour pouvoir les nettoyer proprement
+    const boundItemHandlers = new Map<HTMLElement, (e: Event) => void>();
+    const boundEmptyItemHandlers = new Map<HTMLElement, (e: Event) => void>();
+    const boundGroupHeaderHandlers = new Map<HTMLElement, (e: MouseEvent) => void>();
+    const boundGroupKeydownHandlers = new Map<HTMLElement, (e: KeyboardEvent) => void>();
+
+    function cleanupTreeListeners() {
+      boundItemHandlers.forEach((handler, el) => el.removeEventListener('click', handler));
+      boundItemHandlers.clear();
+
+      boundEmptyItemHandlers.forEach((handler, el) => el.removeEventListener('click', handler));
+      boundEmptyItemHandlers.clear();
+
+      boundGroupHeaderHandlers.forEach((handler, el) => el.removeEventListener('click', handler));
+      boundGroupHeaderHandlers.clear();
+
+      boundGroupKeydownHandlers.forEach((handler, el) => el.removeEventListener('keydown', handler));
+      boundGroupKeydownHandlers.clear();
+    }
+
     function createNoteTreeItemElement(n: NoteItem): HTMLElement {
       const itemEl = document.createElement('div');
       itemEl.className = `note-tree-item ${n.id === currentNoteId ? 'active' : ''}`;
@@ -1870,22 +1880,23 @@ const subjectsList = subjects.map((s) => ({
         ${badgeLabel ? `<span class="item-badge" title="${esc(n.category)}">${esc(badgeLabel)}</span>` : ''}
       `;
 
-      itemEl.addEventListener('click', () => {
+      const clickHandler = () => {
         loadNoteIntoCanvas(n.id);
         if (isMobile()) collapseSidebar();
-      });
+      };
+      itemEl.addEventListener('click', clickHandler);
+      boundItemHandlers.set(itemEl, clickHandler);
 
       return itemEl;
     }
 
-    // 2. Rendu de l'arbre des notes dans la barre latérale
     function renderNotesTree(filterQuery: string = '') {
       if (!notesTree) return;
+      cleanupTreeListeners();
       const q = filterQuery.toLowerCase().trim();
 
       const allSubjects = getAllSubjects();
 
-      // Regrouper séparément : 1) Notes libres (sans matière) 2) Notes par matière
       const rootNotes: NoteItem[] = [];
       const groups = new Map<string, NoteItem[]>();
       allSubjects.forEach(({ name }) => groups.set(name, []));
@@ -1903,7 +1914,6 @@ const subjectsList = subjects.map((s) => ({
       notesTree.innerHTML = '';
       let hasAnyVisible = false;
 
-      // Section 1 : Notes libres (Racine, sans affiliation)
       const matchingRootNotes = q
         ? rootNotes.filter(
             (n) =>
@@ -1945,7 +1955,7 @@ const subjectsList = subjects.map((s) => ({
           renderNotesTree(searchInput?.value || '');
         };
 
-        rootHeaderEl.addEventListener('click', (e) => {
+        const rootHeaderClickHandler = (e: MouseEvent) => {
           const target = e.target as HTMLElement;
           if (target && target.classList.contains('btn-group-add-note')) {
             e.stopPropagation();
@@ -1953,14 +1963,18 @@ const subjectsList = subjects.map((s) => ({
             return;
           }
           toggleRootGroup();
-        });
+        };
+        rootHeaderEl.addEventListener('click', rootHeaderClickHandler);
+        boundGroupHeaderHandlers.set(rootHeaderEl, rootHeaderClickHandler);
 
-        rootHeaderEl.addEventListener('keydown', (ev) => {
+        const rootHeaderKeyHandler = (ev: KeyboardEvent) => {
           if (ev.key === 'Enter' || ev.key === ' ') {
             ev.preventDefault();
             toggleRootGroup();
           }
-        });
+        };
+        rootHeaderEl.addEventListener('keydown', rootHeaderKeyHandler);
+        boundGroupKeydownHandlers.set(rootHeaderEl, rootHeaderKeyHandler);
 
         rootGroupEl.appendChild(rootHeaderEl);
 
@@ -1972,7 +1986,12 @@ const subjectsList = subjects.map((s) => ({
             const emptyItem = document.createElement('div');
             emptyItem.className = 'subject-empty-hint';
             emptyItem.innerHTML = `<span>Aucune note libre.</span> <button type="button" class="btn-inline-new" data-sub="">+ Écrire</button>`;
-            emptyItem.querySelector('.btn-inline-new')?.addEventListener('click', () => createNewNote(''));
+            const emptyBtn = emptyItem.querySelector('.btn-inline-new');
+            if (emptyBtn) {
+              const emptyClickHandler = () => createNewNote('');
+              emptyBtn.addEventListener('click', emptyClickHandler);
+              boundEmptyItemHandlers.set(emptyBtn as HTMLElement, emptyClickHandler);
+            }
             rootListEl.appendChild(emptyItem);
           } else {
             matchingRootNotes.forEach((n) => {
@@ -1986,13 +2005,11 @@ const subjectsList = subjects.map((s) => ({
         notesTree.appendChild(rootGroupEl);
       }
 
-      // Section 2 : Matières
       Array.from(groups.keys())
         .sort((a, b) => a.localeCompare(b, 'fr'))
         .forEach((subjectName) => {
           const list = groups.get(subjectName) || [];
 
-          // En mode recherche, masquer les matières sans correspondance
           const matchingNotes = q
             ? list.filter(
                 (n) =>
@@ -2036,7 +2053,7 @@ const subjectsList = subjects.map((s) => ({
             renderNotesTree(searchInput?.value || '');
           };
 
-          headerEl.addEventListener('click', (e) => {
+          const headerClickHandler = (e: MouseEvent) => {
             const target = e.target as HTMLElement;
             if (target && target.classList.contains('btn-group-add-note')) {
               e.stopPropagation();
@@ -2044,14 +2061,18 @@ const subjectsList = subjects.map((s) => ({
               return;
             }
             toggleGroup();
-          });
+          };
+          headerEl.addEventListener('click', headerClickHandler);
+          boundGroupHeaderHandlers.set(headerEl, headerClickHandler);
 
-          headerEl.addEventListener('keydown', (ev) => {
+          const headerKeyHandler = (ev: KeyboardEvent) => {
             if (ev.key === 'Enter' || ev.key === ' ') {
               ev.preventDefault();
               toggleGroup();
             }
-          });
+          };
+          headerEl.addEventListener('keydown', headerKeyHandler);
+          boundGroupKeydownHandlers.set(headerEl, headerKeyHandler);
 
           groupEl.appendChild(headerEl);
 
@@ -2063,7 +2084,12 @@ const subjectsList = subjects.map((s) => ({
               const emptyItem = document.createElement('div');
               emptyItem.className = 'subject-empty-hint';
               emptyItem.innerHTML = `<span>Aucune note.</span> <button type="button" class="btn-inline-new" data-sub="${esc(subjectName)}">+ Écrire</button>`;
-              emptyItem.querySelector('.btn-inline-new')?.addEventListener('click', () => createNewNote(subjectName));
+              const emptyBtn = emptyItem.querySelector('.btn-inline-new');
+              if (emptyBtn) {
+                const emptyClickHandler = () => createNewNote(subjectName);
+                emptyBtn.addEventListener('click', emptyClickHandler);
+                boundEmptyItemHandlers.set(emptyBtn as HTMLElement, emptyClickHandler);
+              }
               listEl.appendChild(emptyItem);
             } else {
               matchingNotes.forEach((n) => {
@@ -2082,23 +2108,19 @@ const subjectsList = subjects.map((s) => ({
       }
     }
 
-    // 3. Charger une note dans le canvas
     function loadNoteIntoCanvas(id: string) {
       const target = notes.find((n) => n.id === id);
       if (!target) return;
 
       currentNoteId = target.id;
 
-      // URL history
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.set('id', target.id);
       window.history.replaceState({}, '', newUrl.toString());
 
-      // Titre & corps
       noteTitle.value = target.title === 'Sans titre' ? '' : target.title;
       noteBody.value = target.body_md || '';
 
-      // Matière & catégorie (libre / sans matière si vide)
       refreshSubjectsDropdown(target.subject || '');
       if (propSubjectSelect) propSubjectSelect.value = target.subject || '';
       updateCategoryVisibility();
@@ -2117,30 +2139,23 @@ const subjectsList = subjects.map((s) => ({
         }
       }
 
-      // Icône de page
       if (pageIconDisplay) {
         const iconName = target.icon || 'file';
         pageIconDisplay.innerHTML = ICON_SVGS[iconName] || ICON_SVGS.file;
       }
 
-      // Breadcrumbs
       if (crumbSubjectLabel) crumbSubjectLabel.textContent = target.subject || 'Notes libres';
       if (crumbTitleLabel) crumbTitleLabel.textContent = target.title || 'Sans titre';
 
-      // Temps et statistiques
       updateStatsAndTimestamp(target.body_md, target.updated_at);
-
-      // Aperçu direct
       updatePreview(target.body_md);
       requestAnimationFrame(autoGrow);
 
-      // Mise en surbrillance de l'item actif dans la barre
       document.querySelectorAll('.note-tree-item').forEach((el) => {
         el.classList.toggle('active', el.getAttribute('data-id') === target.id);
       });
     }
 
-    // 4. Mettre à jour les stats (mots, lecture, date)
     function updateStatsAndTimestamp(text: string, updatedIso?: string) {
       const stats = computeNoteStats(text);
       if (propStatsLabel) {
@@ -2158,14 +2173,12 @@ const subjectsList = subjects.map((s) => ({
       }
     }
 
-    // 5. Mettre à jour l'aperçu Markdown
     function updatePreview(text: string) {
       if (previewContent) {
         previewContent.innerHTML = renderNotionMarkdown(text);
       }
     }
 
-    // 6. Sauvegarde automatique optimiste
     async function triggerAutoSave() {
       if (!currentNoteId) return;
       const target = notes.find((n) => n.id === currentNoteId);
@@ -2251,7 +2264,6 @@ const subjectsList = subjects.map((s) => ({
       }, 400);
     }
 
-    // 7. Créer une nouvelle note (non affiliée par défaut)
     function createNewNote(customSubject?: string, persistImmediate = true) {
       const defaultSubject = customSubject || '';
       const newNote: NoteItem = {
@@ -2277,29 +2289,25 @@ const subjectsList = subjects.map((s) => ({
       if (persistImmediate) noteTitle.focus();
     }
 
-    // 8. Écouteurs d'édition en direct
-    noteTitle?.addEventListener('input', () => {
-      scheduleAutoSave();
-    });
-
-    noteBody?.addEventListener('input', () => {
+    // Gestionnaires d'événements principaux avec références pour nettoyage
+    const handleTitleInput = () => scheduleAutoSave();
+    const handleBodyInput = () => {
       autoGrow();
       updatePreview(noteBody.value);
       updateStatsAndTimestamp(noteBody.value);
       scheduleAutoSave();
       checkSlashTrigger();
-    });
+    };
 
-    // Reclassification directe dans une matière
-    propSubjectSelect?.addEventListener('change', () => {
+    const handleSubjectChange = () => {
       const chosen = propSubjectSelect.value || '';
       if (crumbSubjectLabel) crumbSubjectLabel.textContent = chosen || 'Notes libres';
       updateCategoryVisibility();
       scheduleAutoSave();
       renderNotesTree(searchInput?.value || '');
-    });
+    };
 
-    propCategorySelect?.addEventListener('change', () => {
+    const handleCategoryChange = () => {
       if (propCategorySelect.value === '__new__') {
         if (propCustomCategory) {
           propCustomCategory.style.display = 'inline-block';
@@ -2309,14 +2317,11 @@ const subjectsList = subjects.map((s) => ({
         if (propCustomCategory) propCustomCategory.style.display = 'none';
         scheduleAutoSave();
       }
-    });
+    };
 
-    propCustomCategory?.addEventListener('input', () => {
-      scheduleAutoSave();
-    });
+    const handleCustomCategoryInput = () => scheduleAutoSave();
 
-    // Bouton ajouter une matière custom
-    btnAddCustomSubject?.addEventListener('click', () => {
+    const handleAddCustomSubjectClick = () => {
       const name = prompt('Nom de la nouvelle matière :');
       if (name && name.trim()) {
         const clean = name.trim();
@@ -2330,9 +2335,15 @@ const subjectsList = subjects.map((s) => ({
         scheduleAutoSave();
         renderNotesTree(searchInput?.value || '');
       }
-    });
+    };
 
-    // Gestion intelligente du menu Slash Command (/)
+    noteTitle?.addEventListener('input', handleTitleInput);
+    noteBody?.addEventListener('input', handleBodyInput);
+    propSubjectSelect?.addEventListener('change', handleSubjectChange);
+    propCategorySelect?.addEventListener('change', handleCategoryChange);
+    propCustomCategory?.addEventListener('input', handleCustomCategoryInput);
+    btnAddCustomSubject?.addEventListener('click', handleAddCustomSubjectClick);
+
     function checkSlashTrigger() {
       if (!slashMenu) return;
       const cursorPos = noteBody.selectionStart;
@@ -2352,8 +2363,7 @@ const subjectsList = subjects.map((s) => ({
       }
     }
 
-    noteBody?.addEventListener('keydown', (e) => {
-      // Raccourci explicite Ctrl+/ ou Cmd+/ pour invoquer le menu n'importe où
+    const handleBodyKeydown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === '/' || e.code === 'Slash')) {
         e.preventDefault();
         slashDismissedPos = null;
@@ -2377,16 +2387,15 @@ const subjectsList = subjects.map((s) => ({
           executeActiveSlashCommand();
         }
       } else if (e.key === '/' || e.key === ':') {
-        // Réinitialiser tout verrouillage et déclencher dès insertion
         slashDismissedPos = null;
         setTimeout(() => checkSlashTrigger(), 10);
       }
-    });
+    };
+    noteBody?.addEventListener('keydown', handleBodyKeydown);
 
     function openSlashMenu(query: string = '') {
       if (!slashMenu) return;
 
-      // Filtrer les éléments selon la recherche
       const items = Array.from(document.querySelectorAll<HTMLElement>('.slash-item'));
       let visibleCount = 0;
       let firstVisible: HTMLElement | null = null;
@@ -2429,10 +2438,11 @@ const subjectsList = subjects.map((s) => ({
       if (slashMenu) slashMenu.style.display = 'none';
     }
 
-    btnCloseSlash?.addEventListener('click', () => {
+    const handleCloseSlashClick = () => {
       slashDismissedPos = noteBody.selectionStart;
       closeSlashMenu();
-    });
+    };
+    btnCloseSlash?.addEventListener('click', handleCloseSlashClick);
 
     function moveSlashSelection(direction: number) {
       const items = Array.from(document.querySelectorAll<HTMLElement>('.slash-item')).filter(
@@ -2459,7 +2469,6 @@ const subjectsList = subjects.map((s) => ({
       const lineStart = val.lastIndexOf('\n', cursor - 1) + 1;
       const lineToCursor = val.substring(lineStart, cursor);
 
-      // Trouver le ou les slashes et la requête à remplacer
       const match = lineToCursor.match(/\/+([a-zA-Z0-9_-]*)$/);
       const replaceStart = match ? lineStart + (lineToCursor.length - match[0].length) : cursor;
 
@@ -2481,7 +2490,7 @@ const subjectsList = subjects.map((s) => ({
       noteBody.focus();
       let newPos = before.length + prefix.length;
       if (cmd === 'code') {
-        newPos = before.length + 4; // place le curseur au milieu du bloc de code
+        newPos = before.length + 4;
       }
       noteBody.setSelectionRange(newPos, newPos);
 
@@ -2491,24 +2500,28 @@ const subjectsList = subjects.map((s) => ({
       scheduleAutoSave();
     }
 
+    const slashItemHandlers: Array<{ el: HTMLElement; handler: () => void }> = [];
     document.querySelectorAll('.slash-item').forEach((item) => {
-      item.addEventListener('click', () => {
+      const handler = () => {
         const cmd = item.getAttribute('data-cmd') || 'p';
         applySlashCommand(cmd);
         closeSlashMenu();
-      });
+      };
+      item.addEventListener('click', handler);
+      slashItemHandlers.push({ el: item as HTMLElement, handler });
     });
 
-    // Sélection d'icône de page
-    btnChooseIcon?.addEventListener('click', (e) => {
+    const handleChooseIconClick = (e: MouseEvent) => {
       e.stopPropagation();
       if (iconPickerPopover) {
         iconPickerPopover.style.display = iconPickerPopover.style.display === 'none' ? 'block' : 'none';
       }
-    });
+    };
+    btnChooseIcon?.addEventListener('click', handleChooseIconClick);
 
+    const pickerItemHandlers: Array<{ el: HTMLElement; handler: (e: MouseEvent) => void }> = [];
     document.querySelectorAll<HTMLButtonElement>('.picker-item').forEach((item) => {
-      item.addEventListener('click', (e) => {
+      const handler = (e: MouseEvent) => {
         e.stopPropagation();
         const iconName = item.getAttribute('data-icon') || 'file';
         if (!currentNoteId) return;
@@ -2520,24 +2533,26 @@ const subjectsList = subjects.map((s) => ({
         }
         if (iconPickerPopover) iconPickerPopover.style.display = 'none';
         scheduleAutoSave();
-      });
+      };
+      item.addEventListener('click', handler);
+      pickerItemHandlers.push({ el: item, handler });
     });
 
-    document.addEventListener('click', (e) => {
+    const handleWindowClick = (e: MouseEvent) => {
       if (slashMenu && slashMenu.style.display !== 'none' && !slashMenu.contains(e.target as Node) && e.target !== noteBody) {
         closeSlashMenu();
       }
       if (iconPickerPopover && iconPickerPopover.style.display !== 'none' && !iconPickerPopover.contains(e.target as Node) && e.target !== btnChooseIcon) {
         iconPickerPopover.style.display = 'none';
       }
-    });
+    };
+    window.addEventListener('click', handleWindowClick);
 
-    // 9. Formatage depuis la barre d'outils
+    const fmtBtnHandlers: Array<{ el: HTMLElement; handler: () => void }> = [];
     document.querySelectorAll<HTMLButtonElement>('.fmt-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      const handler = () => {
         const fmt = btn.getAttribute('data-fmt');
         if (fmt === 'slash') {
-          // Bouton + Bloc : ouvre directement le menu des commandes
           slashDismissedPos = null;
           const cursorPos = noteBody.selectionStart;
           const val = noteBody.value;
@@ -2575,12 +2590,14 @@ const subjectsList = subjects.map((s) => ({
         autoGrow();
         updatePreview(noteBody.value);
         scheduleAutoSave();
-      });
+      };
+      btn.addEventListener('click', handler);
+      fmtBtnHandlers.push({ el: btn, handler });
     });
 
-    // 10. Bascule des modes d'affichage
+    const modeBtnHandlers: Array<{ el: HTMLElement; handler: () => void }> = [];
     document.querySelectorAll<HTMLButtonElement>('.btn-mode').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      const handler = () => {
         const mode = btn.getAttribute('data-mode');
         document.querySelectorAll('.btn-mode').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
@@ -2591,15 +2608,16 @@ const subjectsList = subjects.map((s) => ({
         if (mode === 'preview' || mode === 'split') {
           updatePreview(noteBody.value);
         }
-      });
+      };
+      btn.addEventListener('click', handler);
+      modeBtnHandlers.push({ el: btn, handler });
     });
 
-    // 11. Mode plein écran Zen
-    btnZenMode?.addEventListener('click', () => {
+    const handleZenModeClick = () => {
       root.classList.toggle('zen-mode');
-    });
+    };
+    btnZenMode?.addEventListener('click', handleZenModeClick);
 
-    // 12. Masquage / affichage barre latérale
     function collapseSidebar() {
       sidebar?.classList.add('collapsed');
       if (btnExpandSidebar) btnExpandSidebar.style.display = 'inline-grid';
@@ -2610,12 +2628,16 @@ const subjectsList = subjects.map((s) => ({
       if (btnExpandSidebar) btnExpandSidebar.style.display = 'none';
     }
 
-    btnCollapseSidebar?.addEventListener('click', collapseSidebar);
-    btnExpandSidebar?.addEventListener('click', expandSidebar);
-    document.getElementById('sidebar-backdrop')?.addEventListener('click', collapseSidebar);
+    const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+    const handleCollapseClick = () => collapseSidebar();
+    const handleExpandClick = () => expandSidebar();
+    const handleBackdropClick = () => collapseSidebar();
 
-    // 13. Téléchargement Markdown
-    btnExport?.addEventListener('click', () => {
+    btnCollapseSidebar?.addEventListener('click', handleCollapseClick);
+    btnExpandSidebar?.addEventListener('click', handleExpandClick);
+    sidebarBackdrop?.addEventListener('click', handleBackdropClick);
+
+    const handleExportClick = () => {
       if (!currentNoteId) return;
       const target = notes.find((n) => n.id === currentNoteId);
       if (!target) return;
@@ -2628,10 +2650,10 @@ const subjectsList = subjects.map((s) => ({
       a.download = `${titleSlug}.md`;
       a.click();
       URL.revokeObjectURL(dlUrl);
-    });
+    };
+    btnExport?.addEventListener('click', handleExportClick);
 
-    // 14. Suppression de note
-    btnDelete?.addEventListener('click', async () => {
+    const handleDeleteClick = async () => {
       if (!currentNoteId) return;
       const target = notes.find((n) => n.id === currentNoteId);
       if (!target) return;
@@ -2651,10 +2673,10 @@ const subjectsList = subjects.map((s) => ({
         }
         renderNotesTree(searchInput?.value || '');
       }
-    });
+    };
+    btnDelete?.addEventListener('click', handleDeleteClick);
 
-    // 15. Gestionnaire cases à cocher interactives dans l'aperçu
-    previewContent?.addEventListener('change', (e) => {
+    const handlePreviewChange = (e: Event) => {
       const target = e.target as HTMLInputElement;
       if (target && target.classList.contains('notion-todo-cb')) {
         const idx = parseInt(target.getAttribute('data-index') || '0', 10);
@@ -2670,14 +2692,14 @@ const subjectsList = subjects.map((s) => ({
         updatePreview(noteBody.value);
         scheduleAutoSave();
       }
-    });
+    };
+    previewContent?.addEventListener('change', handlePreviewChange);
 
-    // 16. Bouton Nouvelle Note
-    btnCreateNote?.addEventListener('click', () => {
+    const handleCreateNoteClick = () => {
       createNewNote();
-    });
+    };
+    btnCreateNote?.addEventListener('click', handleCreateNoteClick);
 
-    // 16bis. Assistant de rédaction de cours par IA
     const modalAiDraft = document.getElementById('modal-ai-draft') as HTMLDialogElement | null;
     const btnOpenAiDraft = document.getElementById('btn-open-ai-draft');
     const btnCloseAiModal = document.getElementById('btn-close-ai-modal');
@@ -2735,21 +2757,27 @@ const subjectsList = subjects.map((s) => ({
       modalAiDraft.showModal();
     }
 
-    btnOpenAiDraft?.addEventListener('click', openAiModal);
-    btnCloseAiModal?.addEventListener('click', () => modalAiDraft?.close());
-    modalAiDraft?.addEventListener('click', (e) => {
+    const handleOpenAiClick = () => openAiModal();
+    const handleCloseAiModalClick = () => modalAiDraft?.close();
+    const handleModalAiClick = (e: MouseEvent) => {
       if (e.target === modalAiDraft) modalAiDraft.close();
-    });
+    };
 
-    // Choix du format (cartes radio)
+    btnOpenAiDraft?.addEventListener('click', handleOpenAiClick);
+    btnCloseAiModal?.addEventListener('click', handleCloseAiModalClick);
+    modalAiDraft?.addEventListener('click', handleModalAiClick);
+
     const formatCards = document.querySelectorAll<HTMLElement>('.format-card');
+    const formatCardHandlers: Array<{ el: HTMLElement; handler: () => void }> = [];
     formatCards.forEach((card) => {
-      card.addEventListener('click', () => {
+      const handler = () => {
         formatCards.forEach((c) => c.classList.remove('active'));
         card.classList.add('active');
         const radio = card.querySelector<HTMLInputElement>('input[type="radio"]');
         if (radio) radio.checked = true;
-      });
+      };
+      card.addEventListener('click', handler);
+      formatCardHandlers.push({ el: card, handler });
     });
 
     async function executeAiGeneration() {
@@ -2787,11 +2815,13 @@ const subjectsList = subjects.map((s) => ({
       }
     }
 
-    btnTriggerAi?.addEventListener('click', executeAiGeneration);
-    btnAiRetry?.addEventListener('click', executeAiGeneration);
+    const handleTriggerAiClick = () => executeAiGeneration();
+    const handleAiRetryClick = () => executeAiGeneration();
 
-    // Option 1 : Créer une nouvelle note de cours
-    btnApplyAsNewNote?.addEventListener('click', () => {
+    btnTriggerAi?.addEventListener('click', handleTriggerAiClick);
+    btnAiRetry?.addEventListener('click', handleAiRetryClick);
+
+    const handleApplyAsNewNoteClick = () => {
       if (!lastGeneratedDraft) return;
       const currentTitle = noteTitle?.value.trim() || 'Sans titre';
       const prefix = lastGeneratedDraftMode === 'cours' ? 'Cours' : 'Fiche';
@@ -2822,10 +2852,9 @@ const subjectsList = subjects.map((s) => ({
 
       modalAiDraft?.close();
       toast('Nouveau cours créé et enregistré avec succès.', 'success');
-    });
+    };
 
-    // Option 2 : Ajouter à la suite de la note actuelle
-    btnApplyAppend?.addEventListener('click', () => {
+    const handleApplyAppendClick = () => {
       if (!lastGeneratedDraft) return;
       const current = noteBody.value.trim();
       const separator = current ? '\n\n---\n\n' : '';
@@ -2834,10 +2863,9 @@ const subjectsList = subjects.map((s) => ({
 
       modalAiDraft?.close();
       toast('Cours ajouté à la suite de vos notes.', 'success');
-    });
+    };
 
-    // Option 3 : Remplacer le texte actuel
-    btnApplyReplace?.addEventListener('click', () => {
+    const handleApplyReplaceClick = () => {
       if (!lastGeneratedDraft) return;
       if (!confirm('Remplacer tout le contenu de cette note par le cours rédigé ?')) return;
 
@@ -2846,14 +2874,17 @@ const subjectsList = subjects.map((s) => ({
 
       modalAiDraft?.close();
       toast('Contenu de la note remplacé avec succès.', 'success');
-    });
+    };
 
-    // 17. Recherche en direct
-    searchInput?.addEventListener('input', () => {
+    btnApplyAsNewNote?.addEventListener('click', handleApplyAsNewNoteClick);
+    btnApplyAppend?.addEventListener('click', handleApplyAppendClick);
+    btnApplyReplace?.addEventListener('click', handleApplyReplaceClick);
+
+    const handleSearchInput = () => {
       renderNotesTree(searchInput.value);
-    });
+    };
+    searchInput?.addEventListener('input', handleSearchInput);
 
-    // 18. Raccourcis clavier (Ctrl+S, Ctrl+N)
     const handleKeydown = (e: KeyboardEvent) => {
       if (!document.querySelector('[data-notes-workspace]')) return;
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -2866,7 +2897,6 @@ const subjectsList = subjects.map((s) => ({
     };
     window.addEventListener('keydown', handleKeydown);
 
-    // 19. Sauvegarder impérativement si l'utilisateur quitte la page
     const handleBeforeUnload = () => {
       if (isSaving || autoSaveTimer) {
         triggerAutoSave();
@@ -2874,7 +2904,6 @@ const subjectsList = subjects.map((s) => ({
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // Écouter les mises à jour des cours en direct
     const handleCoursesChanged = () => {
       if (!document.querySelector('[data-notes-workspace]')) return;
       refreshSubjectsDropdown();
@@ -2882,21 +2911,69 @@ const subjectsList = subjects.map((s) => ({
     };
     window.addEventListener('marges:courses-changed', handleCoursesChanged);
 
-    // Nettoyage et sauvegarde lors d'une transition Astro SPA (ClientRouter)
-    document.addEventListener(
-      'astro:before-swap',
-      () => {
-        handleBeforeUnload();
-        window.removeEventListener('keydown', handleKeydown);
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-        window.removeEventListener('marges:courses-changed', handleCoursesChanged);
-      },
-      { once: true }
-    );
+    // Fonction de nettoyage globale et explicite (removeEventListener et purge des closures)
+    const cleanupApp = () => {
+      handleBeforeUnload();
 
-    // 20. Chargement initial instantané (0 milliseconde de latence)
+      fontToggleButtons.forEach((btn) => btn.removeEventListener('click', handleFontClick));
+      cleanupTreeListeners();
+
+      noteTitle?.removeEventListener('input', handleTitleInput);
+      noteBody?.removeEventListener('input', handleBodyInput);
+      propSubjectSelect?.removeEventListener('change', handleSubjectChange);
+      propCategorySelect?.removeEventListener('change', handleCategoryChange);
+      propCustomCategory?.removeEventListener('input', handleCustomCategoryInput);
+      btnAddCustomSubject?.removeEventListener('click', handleAddCustomSubjectClick);
+      noteBody?.removeEventListener('keydown', handleBodyKeydown);
+
+      btnCloseSlash?.removeEventListener('click', handleCloseSlashClick);
+      slashItemHandlers.forEach(({ el, handler }) => el.removeEventListener('click', handler));
+
+      btnChooseIcon?.removeEventListener('click', handleChooseIconClick);
+      pickerItemHandlers.forEach(({ el, handler }) => el.removeEventListener('click', handler));
+      window.removeEventListener('click', handleWindowClick);
+
+      fmtBtnHandlers.forEach(({ el, handler }) => el.removeEventListener('click', handler));
+      modeBtnHandlers.forEach(({ el, handler }) => el.removeEventListener('click', handler));
+      btnZenMode?.removeEventListener('click', handleZenModeClick);
+
+      btnCollapseSidebar?.removeEventListener('click', handleCollapseClick);
+      btnExpandSidebar?.removeEventListener('click', handleExpandClick);
+      sidebarBackdrop?.removeEventListener('click', handleBackdropClick);
+
+      btnExport?.removeEventListener('click', handleExportClick);
+      btnDelete?.removeEventListener('click', handleDeleteClick);
+      previewContent?.removeEventListener('change', handlePreviewChange);
+      btnCreateNote?.removeEventListener('click', handleCreateNoteClick);
+
+      btnOpenAiDraft?.removeEventListener('click', handleOpenAiClick);
+      btnCloseAiModal?.removeEventListener('click', handleCloseAiModalClick);
+      modalAiDraft?.removeEventListener('click', handleModalAiClick);
+
+      formatCardHandlers.forEach(({ el, handler }) => el.removeEventListener('click', handler));
+      btnTriggerAi?.removeEventListener('click', handleTriggerAiClick);
+      btnAiRetry?.removeEventListener('click', handleAiRetryClick);
+
+      btnApplyAsNewNote?.removeEventListener('click', handleApplyAsNewNoteClick);
+      btnApplyAppend?.removeEventListener('click', handleApplyAppendClick);
+      btnApplyReplace?.removeEventListener('click', handleApplyReplaceClick);
+
+      searchInput?.removeEventListener('input', handleSearchInput);
+
+      window.removeEventListener('keydown', handleKeydown);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('marges:courses-changed', handleCoursesChanged);
+
+      // Purge des références et closures en mémoire
+      notes = [];
+      unsavedDraftIds.clear();
+      clearTimeout(autoSaveTimer);
+      (root as any).__notesInit = false;
+    };
+
+    document.addEventListener('astro:before-swap', cleanupApp, { once: true });
+
     function loadAppNotes() {
-      // 1. Chargement instantané depuis le cache local du compte actif
       notes = getLocalNotes();
       refreshSubjectsDropdown();
 
@@ -2904,7 +2981,6 @@ const subjectsList = subjects.map((s) => ({
       const reqId = urlParams.get('id');
 
       if (notes.length === 0) {
-        // Brouillon local non persisté tant que l'utilisateur n'écrit pas dedans
         createNewNote('', false);
       } else {
         const found = reqId ? notes.find((n) => n.id === reqId) : null;
@@ -2912,7 +2988,6 @@ const subjectsList = subjects.map((s) => ({
         renderNotesTree();
       }
 
-      // 2. Synchronisation transparente avec Supabase en arrière-plan
       fetchUnifiedNotes()
         .then((fresh) => {
           const isEditing = document.activeElement === noteBody || document.activeElement === noteTitle;
@@ -2927,7 +3002,6 @@ const subjectsList = subjects.map((s) => ({
               loadNoteIntoCanvas(upToDate.id);
             }
           } else if (fresh && fresh.length === 0 && !isEditing) {
-            // Aucun document distant pour ce compte : réinitialiser à un brouillon vierge non persisté
             notes = [];
             unsavedDraftIds.clear();
             createNewNote('', false);
@@ -2947,7 +3021,6 @@ const subjectsList = subjects.map((s) => ({
     } else {
       initNotesApp();
     }
-    // Indispensable pour Astro ClientRouter (transitions SPA entre pages)
     document.addEventListener('astro:page-load', initNotesApp);
   }
 </script>

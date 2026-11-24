@@ -80,6 +80,22 @@ jobs:
           node scripts/generate-article.mjs "$INPUT_THEME" "$INPUT_FORMAT" "$INPUT_SUBJECT"
 
       # -------------------------------------------------------------
+      # ÉTAPE : Génération de l'histoire quotidienne
+      # -------------------------------------------------------------
+      - name: 🌙 Génération de l'histoire quotidienne
+        if: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.generate_article == true)) }}
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -n "$GOOGLE_API_KEY" ] || [ -n "$GEMINI_API_KEY" ]; then
+            echo "Lancement de generate-histoire.mjs..."
+            node scripts/generate-histoire.mjs
+          else
+            echo "⚠️ Clé API Gemini absente, génération d'histoire ignorée."
+          fi
+
+      # -------------------------------------------------------------
       # ÉTAPE : Build AVANT tout commit
       # Un article dont le frontmatter ne respecte pas le schéma de
       # src/content.config.ts fait échouer le build. En commitant d'abord,
@@ -104,10 +120,10 @@ jobs:
           git status
           if [ -n "$(git status --porcelain src/content/textes/)" ]; then
             git add src/content/textes/
-            git commit -m "chore(auto): texte philosophique quotidien (Gemini) [skip ci]"
+            git commit -m "chore(auto): texte philosophique et histoire quotidienne (Gemini) [skip ci]"
             # On pousse sur la branche courante
             git push origin HEAD:${{ github.ref_name }}
-            echo "✓ Nouveau texte commité et poussé avec succès."
+            echo "✓ Nouveaux textes commités et poussés avec succès."
           else
             echo "Aucun nouveau fichier texte à commiter."
           fi
@@ -130,9 +146,6 @@ jobs:
             echo "Secrets SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY non configurés (étape ignorée)."
           fi
 
-      # Le build a déjà été exécuté plus haut (« Build de validation ») :
-      # on réutilise ./dist pour l'artefact Pages.
-
       - name: ⚙️ Configuration de GitHub Pages
         if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
         uses: actions/configure-pages@v5
@@ -149,8 +162,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     needs: generate_and_build
-    # Seule la branche main (et le cron) publie : un push sur dev ne doit pas
-    # remplacer le site en production.
     if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
     runs-on: ubuntu-latest
     steps:

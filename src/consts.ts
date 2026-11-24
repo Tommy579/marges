@@ -29,6 +29,7 @@ export const TYPES = {
   question: { label: 'Question', plural: 'Questions', description: 'Une question ouverte, sans prétendre conclure.' },
   dialogue: { label: 'Dialogue', plural: 'Dialogues', description: 'Un échange à deux voix, à la manière socratique.' },
   note: { label: 'Note', plural: 'Notes', description: 'Une pensée courte, un fragment.' },
+  histoire: { label: 'Histoire', plural: 'Histoires', description: 'Une petite histoire' },
 } as const;
 
 export type TypeSlug = keyof typeof TYPES;
