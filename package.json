@@ -12,6 +12,7 @@
     "sync-cours": "node scripts/sync-cours.mjs",
     "sync-cours:push": "node scripts/sync-cours.mjs --commit --push",
     "generate-article": "node scripts/generate-article.mjs",
+    "generate-histoire": "node scripts/generate-histoire.mjs",
     "generate-icons": "node scripts/generate-icons.mjs",
     "astro": "astro"
   },
